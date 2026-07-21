@@ -93,6 +93,7 @@ function startServer() {
 }
 
 function createWindow() {
+  const isMac = process.platform === 'darwin'
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -100,6 +101,8 @@ function createWindow() {
     minHeight: 600,
     title: '知题 · Zetith',
     show: false,
+    // macOS：隐藏窗口原生标题栏，让红绿灯控件浮于应用之上（屏幕顶部菜单栏不受影响）
+    ...(isMac ? { titleBarStyle: 'hidden', trafficLightPosition: { x: 18, y: 16 } } : {}),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

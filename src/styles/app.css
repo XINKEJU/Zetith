@@ -230,6 +230,18 @@ input, textarea, select {
   background: linear-gradient(180deg, #13111E 0%, #0E0D17 40%, #0A0912 100%);
 }
 
+/* macOS 红绿灯原生适配：隐藏窗口标题栏后，为左上角红绿灯预留安全区，
+   并将侧边栏品牌区设为拖拽区（按钮设为 no-drag 保持可点击）。仅作用于桌面宽度。 */
+@media (min-width: 769px) {
+  body.mac-electron .sidebar-brand {
+    padding-top: 40px;
+    -webkit-app-region: drag;
+  }
+  body.mac-electron .sidebar-brand > button {
+    -webkit-app-region: no-drag;
+  }
+}
+
 .sidebar-brand {
   padding: 22px 20px 18px;
   display: flex;

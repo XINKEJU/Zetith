@@ -44,6 +44,13 @@ export default function Layout({ children }) {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  // macOS 桌面端：隐藏原生窗口标题栏后，标记 body 以便 CSS 适配红绿灯区域与拖拽
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.electronEnv?.platform === 'darwin') {
+      document.body.classList.add('mac-electron')
+    }
+  }, [])
+
   // Prevent body scroll when mobile drawer is open
   useEffect(() => {
     if (mobileDrawerOpen) {

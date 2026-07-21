@@ -60,7 +60,11 @@ export default function SearchModal({ onClose }) {
 
         {query.trim() && (
           <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
-            {results.length === 0 ? (
+            {searching ? (
+              <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                搜索中...
+              </div>
+            ) : results.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-light)', fontSize: '14px' }}>
                 没有找到相关题目
               </div>

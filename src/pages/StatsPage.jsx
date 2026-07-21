@@ -1,5 +1,4 @@
-import React, { useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo, memo } from 'react'
 import { Bar, Doughnut } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -88,7 +87,6 @@ function Heatmap({ data }) {
 }
 
 export default function StatsPage() {
-  const navigate = useNavigate()
   const { categories, stats } = useApp()
 
   const dailyStats = useMemo(() => { try { return getDailyStats(14) } catch { return [] } }, [stats])
@@ -146,7 +144,7 @@ export default function StatsPage() {
         <StatCard value={totalQuestions.toLocaleString()} label="题库总题数" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+      <div className="stats-chart-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '16px', marginBottom: '20px' }}>
         <div className="card">
           <h3 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '16px' }}>每日正确率趋势（近14天）</h3>
           {dailyStats.length > 0 ? (
@@ -247,6 +245,7 @@ export default function StatsPage() {
       {/* 题库概览 */}
       <div className="card" style={{ marginBottom: '0' }}>
         <h3 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '14px' }}>题库总览</h3>
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -272,16 +271,17 @@ export default function StatsPage() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   )
 }
 
-function StatCard({ value, label, color }) {
+const StatCard = memo(function StatCard({ value, label, color }) {
   return (
     <div className="stat-card">
       <div className="stat-value" style={color ? { color } : {}}>{value}</div>
       <div className="stat-label">{label}</div>
     </div>
   )
-}
+})

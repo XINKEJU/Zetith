@@ -15,7 +15,7 @@ const QUALITY_LABELS = [
 
 export default function ReviewPage() {
   const navigate = useNavigate()
-  const { categories, wrongCount, persistAndRefresh } = useApp()
+  const { wrongCount, persistAndRefresh } = useApp()
   const [questions, setQuestions] = useState([])
   const [displays, setDisplays] = useState([])
   const [currentIndex, setCurrentIndex] = useState(0)

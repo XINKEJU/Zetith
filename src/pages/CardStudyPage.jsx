@@ -123,7 +123,7 @@ export default function CardStudyPage() {
 
   return (
     <div>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <div className="page-header card-study-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
         <div>
           <h1>背题模式</h1>
           <p>{category?.name} · {index + 1} / {questions.length}</p>

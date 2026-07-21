@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import SearchModal from './SearchModal'
@@ -28,6 +28,31 @@ export default function Layout({ children }) {
   const [showSearch, setShowSearch] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showReminder, setShowReminder] = useState(false)
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
+
+  // Close mobile drawer on route change
+  useEffect(() => {
+    setMobileDrawerOpen(false)
+  }, [location.pathname])
+
+  // Close mobile drawer on window resize to desktop
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 768) setMobileDrawerOpen(false)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  // Prevent body scroll when mobile drawer is open
+  useEffect(() => {
+    if (mobileDrawerOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [mobileDrawerOpen])
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
@@ -77,7 +102,7 @@ export default function Layout({ children }) {
 
   return (
     <div className={`app-layout ${collapsed ? 'layout-collapsed' : ''}`}>
-      <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
+      <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''} ${mobileDrawerOpen ? 'mobile-drawer-open' : ''}`}>
         <div className="sidebar-brand">
           <div className="brand-mark" style={{ boxShadow: '0 4px 0 var(--duo-green-shadow)' }}>知</div>
           <div className="brand-text-group">
@@ -98,6 +123,20 @@ export default function Layout({ children }) {
               <span style={{ fontSize: '12px' }}>⌘K</span>
             </button>
           )}
+          {/* Mobile close button inside drawer */}
+          <button
+            onClick={() => setMobileDrawerOpen(false)}
+            style={{
+              marginLeft: 'auto', border: '1px solid rgba(255,255,255,0.15)',
+              background: 'rgba(255,255,255,0.08)', borderRadius: '8px',
+              padding: '5px 10px', cursor: 'pointer',
+              color: 'rgba(255,255,255,0.5)', fontSize: '18px',
+              display: 'none', lineHeight: 1,
+            }}
+            className="mobile-drawer-close"
+            >
+            ✕
+          </button>
         </div>
 
         <div className="sidebar-section-label"><span className="sidebar-text">导航</span></div>
@@ -106,7 +145,7 @@ export default function Layout({ children }) {
             <button
               key={item.path}
               className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
-              onClick={() => dbReady && navigate(item.path)}
+              onClick={() => { if (dbReady) { navigate(item.path); setMobileDrawerOpen(false) } }}
               disabled={!dbReady}
               title={collapsed ? item.label : undefined}
             >
@@ -146,7 +185,7 @@ export default function Layout({ children }) {
               <svg className="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"
                 stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 {darkMode ? (
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                  <path d="M16 14.18A6 6 0 0 1 5.82 4 8 8 0 1 0 16 14.18z" />
                 ) : (
                   <><circle cx="10" cy="10" r="4" /><path d="M10 2V3" /><path d="M10 17V18" /><path d="M3.5 3.5L4.5 4.5" /><path d="M15.5 15.5L16.5 16.5" /><path d="M2 10H3" /><path d="M17 10H18" /><path d="M3.5 16.5L4.5 15.5" /><path d="M15.5 4.5L16.5 3.5" /></>
                 )}
@@ -168,6 +207,29 @@ export default function Layout({ children }) {
           <path d="M5 2L9 7L5 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </button>
+
+      {/* Mobile hamburger menu button */}
+      {dbReady && (
+        <button
+          className="mobile-menu-btn"
+          onClick={() => setMobileDrawerOpen(true)}
+          aria-label="打开菜单"
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <path d="M3 5H17" />
+            <path d="M3 10H17" />
+            <path d="M3 15H17" />
+          </svg>
+        </button>
+      )}
+
+      {/* Mobile drawer overlay */}
+      {mobileDrawerOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={() => setMobileDrawerOpen(false)}
+        />
+      )}
 
       <main className="main-content">
         {!dbReady ? (
@@ -207,36 +269,227 @@ export default function Layout({ children }) {
 }
 
 const mobileNavItems = [
-  { path: '/', label: '首页', emoji: '🏠' },
-  { path: '/practice', label: '练习', emoji: '✏️' },
-  { path: '/review', label: '复习', emoji: '🧠' },
-  { path: '/wrongbook', label: '错题', emoji: '📝' },
-  { path: '/stats', label: '统计', emoji: '📊' },
+  { path: '/', label: '首页', icon: 'home' },
+  { path: null, label: '学习', icon: 'learn', isMenu: true },
+  { path: '/review', label: '复习', icon: 'review' },
+  { path: '/wrongbook', label: '错题', icon: 'wrong' },
+  { path: null, label: '我的', icon: 'me', isMenu: true },
+]
+
+const learnMenuItems = [
+  { path: '/practice', label: '答题练习', desc: '选题练习，即时反馈', color: '#58CC02', icon: '✏️' },
+  { path: '/cards', label: '背题模式', desc: '卡片翻转，查看答案', color: '#1CB0F6', icon: '🃏' },
+  { path: '/exam', label: '模拟考试', desc: '限时考试，真实模拟', color: '#FF9600', icon: '📝' },
+  { path: '/daily', label: '每日一练', desc: '智能混合推荐', color: '#CE82FF', icon: '📅' },
+  { path: '/categories', label: '浏览学习', desc: '按题库逐题浏览', color: '#FFC800', icon: '📖' },
+]
+
+const meMenuItems = [
+  { path: '/stats', label: '学习统计', desc: '数据分析和弱项诊断', icon: '📊' },
+  { path: '/favorites', label: '收藏夹', desc: '收藏的题目', icon: '⭐' },
+  { path: '/history', label: '练习历史', desc: '查看所有练习记录', icon: '🕐' },
+  { path: '/categories', label: '题库管理', desc: '导入导出和管理题库', icon: '📚' },
 ]
 
 function MobileNav({ location, navigate, wrongCount, onSearch }) {
+  const [activeSheet, setActiveSheet] = useState(null) // 'learn' | 'me' | null
+  const sheetRef = useRef(null)
+
+  // Close sheet on route change
+  useEffect(() => { setActiveSheet(null) }, [location])
+
+  // Close sheet on overlay click
+  const closeSheet = () => setActiveSheet(null)
+
+  const handleTabClick = (item) => {
+    if (item.isMenu) {
+      setActiveSheet(prev => prev === item.icon ? null : item.icon)
+    } else {
+      navigate(item.path)
+    }
+  }
+
+  const handleSheetItem = (path) => {
+    setActiveSheet(null)
+    navigate(path)
+  }
+
+  const isTabActive = (item) => {
+    if (item.path === '/') return location === '/'
+    if (item.icon === 'learn') {
+      return ['/practice', '/cards', '/exam', '/daily'].includes(location) ||
+             location.startsWith('/study/')
+    }
+    if (item.icon === 'me') {
+      return ['/stats', '/favorites', '/history', '/categories'].includes(location)
+    }
+    return location === item.path
+  }
+
+  const sheetItems = activeSheet === 'learn' ? learnMenuItems : activeSheet === 'me' ? meMenuItems : []
+
   return (
-    <nav className="mobile-nav">
-      {mobileNavItems.map(item => {
-        const active = location === item.path || (item.path === '/categories' && location.startsWith('/study/'))
-        return (
-          <button
-            key={item.path}
-            className={`mobile-nav-item ${active ? 'active' : ''}`}
-            onClick={() => navigate(item.path)}
-          >
-            <span className="mobile-nav-emoji">{item.emoji}</span>
-            <span className="mobile-nav-label">{item.label}</span>
-            {item.path === '/wrongbook' && wrongCount > 0 && (
-              <span className="mobile-nav-badge">{wrongCount}</span>
-            )}
-          </button>
-        )
-      })}
-      <button className="mobile-nav-item" onClick={onSearch}>
-        <span className="mobile-nav-emoji">🔍</span>
-        <span className="mobile-nav-label">搜索</span>
-      </button>
-    </nav>
+    <>
+      {/* Bottom Sheet */}
+      {activeSheet && (
+        <>
+          <div className="mobile-sheet-overlay" onClick={closeSheet} />
+          <div className="mobile-sheet" ref={sheetRef}>
+            <div className="mobile-sheet-handle" />
+            <div className="mobile-sheet-header">
+              <h3>{activeSheet === 'learn' ? '学习模式' : '我的'}</h3>
+              <button className="mobile-sheet-close" onClick={closeSheet}>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M5 5L15 15M15 5L5 15" />
+                </svg>
+              </button>
+            </div>
+            <div className="mobile-sheet-body">
+              {sheetItems.map((item, idx) => (
+                <button
+                  key={item.path}
+                  className="mobile-sheet-item"
+                  onClick={() => handleSheetItem(item.path)}
+                  style={{ animationDelay: `${idx * 0.04}s` }}
+                >
+                  <span className="mobile-sheet-item-icon" style={{ background: item.color || 'var(--duo-green)' }}>
+                    {item.icon}
+                  </span>
+                  <div className="mobile-sheet-item-text">
+                    <span className="mobile-sheet-item-label">{item.label}</span>
+                    {item.desc && <span className="mobile-sheet-item-desc">{item.desc}</span>}
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M6 3L11 8L6 13" />
+                  </svg>
+                </button>
+              ))}
+              {activeSheet === 'learn' && (
+                <button className="mobile-sheet-item" onClick={() => { setActiveSheet(null); onSearch() }}>
+                  <span className="mobile-sheet-item-icon" style={{ background: '#777' }}>🔍</span>
+                  <div className="mobile-sheet-item-text">
+                    <span className="mobile-sheet-item-label">搜索题目</span>
+                    <span className="mobile-sheet-item-desc">全局搜索题库</span>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M6 3L11 8L6 13" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Bottom Tab Bar */}
+      <nav className="mobile-nav">
+        {mobileNavItems.map((item, idx) => {
+          const active = isTabActive(item)
+          // Render center FAB for practice quick action
+          if (idx === 2) {
+            return (
+              <React.Fragment key="center-group">
+                <button
+                  key={item.path || item.icon}
+                  className={`mobile-nav-item ${active ? 'active' : ''}`}
+                  onClick={() => handleTabClick(item)}
+                >
+                  <MobileNavIcon name={item.icon} active={active} />
+                  <span className="mobile-nav-label">{item.label}</span>
+                  {item.path === '/wrongbook' && wrongCount > 0 && (
+                    <span className="mobile-nav-badge">{wrongCount}</span>
+                  )}
+                </button>
+
+                {/* Center FAB */}
+                <button
+                  className="mobile-fab"
+                  onClick={() => navigate('/practice')}
+                  aria-label="开始练习"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 18H18M15 3L18 7L8 18H3V14L15 3Z" />
+                  </svg>
+                </button>
+
+                <button
+                  key={item.path || `${item.icon}-2`}
+                  className={`mobile-nav-item ${active ? 'active' : ''}`}
+                  onClick={() => handleTabClick(mobileNavItems[3])}
+                >
+                  <MobileNavIcon name={mobileNavItems[3].icon} active={isTabActive(mobileNavItems[3])} />
+                  <span className="mobile-nav-label">{mobileNavItems[3].label}</span>
+                  {wrongCount > 0 && (
+                    <span className="mobile-nav-badge">{wrongCount}</span>
+                  )}
+                </button>
+              </React.Fragment>
+            )
+          }
+          // Skip items that were rendered in the center group
+          if (idx === 3) return null
+          return (
+            <button
+              key={item.path || item.icon}
+              className={`mobile-nav-item ${active ? 'active' : ''}`}
+              onClick={() => handleTabClick(item)}
+            >
+              <MobileNavIcon name={item.icon} active={active} />
+              <span className="mobile-nav-label">{item.label}</span>
+              {item.path === '/wrongbook' && wrongCount > 0 && (
+                <span className="mobile-nav-badge">{wrongCount}</span>
+              )}
+            </button>
+          )
+        })}
+      </nav>
+    </>
   )
 }
+
+const MobileNavIcon = memo(function MobileNavIcon({ name, active }) {
+  const color = active ? 'var(--duo-green)' : 'var(--text-muted)'
+  const props = { width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: color, strokeWidth: '1.8', strokeLinecap: 'round', strokeLinejoin: 'round' }
+
+  switch (name) {
+    case 'home':
+      return (
+        <svg {...props}>
+          <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" />
+          {active && <path d="M9 21V12h6v9" fill={color} stroke="none" />}
+        </svg>
+      )
+    case 'learn':
+      return (
+        <svg {...props}>
+          <rect x="3" y="2" width="18" height="20" rx="2" />
+          <path d="M12 7v4" /><circle cx="12" cy="14" r="0.5" fill={color} stroke="none" />
+          <path d="M3 4h18" opacity="0.3" />
+        </svg>
+      )
+    case 'review':
+      return (
+        <svg {...props}>
+          <path d="M3 12a9 9 0 019-9 9 9 0 110 18" />
+          <path d="M3 12l3-3M3 12l3 3" />
+          <path d="M12 8v4l3 3" />
+        </svg>
+      )
+    case 'wrong':
+      return (
+        <svg {...props}>
+          <path d="M12 3L3 21h18L12 3z" />
+          <path d="M12 11v4" /><circle cx="12" cy="17" r="0.5" fill={color} stroke="none" />
+        </svg>
+      )
+    case 'me':
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="8" r="4" />
+          <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+        </svg>
+      )
+    default:
+      return null
+  }
+})

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react'
+import React, { useState, useRef, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useToast } from '../components/ToastProvider'
@@ -115,14 +115,64 @@ export default function CategoriesPage() {
     handleImport(files)
   }
 
+  // Swipe-to-delete state
+  const swipeState = useRef({})
+  const activeSwipedId = useRef(null)
+
+  const resetSwipe = (catId) => {
+    const el = document.getElementById(`swipe-${catId}`)
+    if (el) {
+      el.style.transition = 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
+      el.style.transform = 'translateX(0)'
+    }
+    if (swipeState.current[catId]) {
+      swipeState.current[catId].offset = 0
+    }
+  }
+
+  const handleTouchStart = useCallback((e, catId) => {
+    // Close any previously swiped card
+    if (activeSwipedId.current !== null && activeSwipedId.current !== catId) {
+      resetSwipe(activeSwipedId.current)
+    }
+    swipeState.current[catId] = { startX: e.touches[0].clientX, offset: swipeState.current[catId]?.offset || 0 }
+  }, [])
+  const handleTouchMove = useCallback((e, catId) => {
+    const state = swipeState.current[catId]
+    if (!state) return
+    const diff = e.touches[0].clientX - state.startX
+    state.offset = Math.min(0, Math.max(-80, diff))
+    const el = document.getElementById(`swipe-${catId}`)
+    if (el) {
+      el.style.transform = `translateX(${state.offset}px)`
+      el.style.transition = 'none'
+    }
+  }, [])
+  const handleTouchEnd = useCallback((e, catId) => {
+    const state = swipeState.current[catId]
+    if (!state) return
+    const el = document.getElementById(`swipe-${catId}`)
+    if (!el) return
+    el.style.transition = 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
+    if (state.offset < -40) {
+      el.style.transform = 'translateX(-80px)'
+      swipeState.current[catId].offset = -80
+      activeSwipedId.current = catId
+    } else {
+      el.style.transform = 'translateX(0)'
+      swipeState.current[catId].offset = 0
+      activeSwipedId.current = null
+    }
+  }, [])
+
   return (
     <div>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className="page-header categories-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1>题库管理</h1>
           <p>管理你的所有题库，支持导入 Excel 文件</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div className="categories-toolbar" style={{ display: 'flex', gap: '8px' }}>
           {categories.length > 0 && (
             <button className="btn btn-outline" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={async () => {
               const ok = await confirm('确定要清空所有题库和学习记录吗？此操作不可撤销。', '清空全部数据')
@@ -206,49 +256,61 @@ export default function CategoriesPage() {
             const pct = progress.total > 0 ? Math.round((progress.attempted / progress.total) * 100) : 0
             const correctPct = progress.attempted > 0 ? Math.round((progress.correct / progress.attempted) * 100) : 0
             return (
-            <div
-              key={cat.id}
-              className="category-card"
-              onClick={() => navigate(`/study/${cat.id}`)}
-            >
-              <button
-                className="delete-btn"
-                onClick={async (e) => {
-                  e.stopPropagation()
-                  const ok = await confirm(`确定要删除题库"${cat.name}"吗？所有题目和学习记录将被清空。`, '删除题库')
-                  if (ok) {
-                    deleteCategory(cat.id)
-                    persistAndRefresh().catch(() => {})
+            <div key={cat.id} className="category-swipe-container">
+              <div className="category-swipe-bg">删除</div>
+              <div
+                id={`swipe-${cat.id}`}
+                className="category-card category-swipe-content"
+                onClick={() => {
+                  if (swipeState.current[cat.id]?.offset === -80) {
+                    resetSwipe(cat.id)
+                    activeSwipedId.current = null
+                    return
                   }
+                  navigate(`/study/${cat.id}`)
                 }}
-                title="删除题库"
+                onTouchStart={(e) => handleTouchStart(e, cat.id)}
+                onTouchMove={(e) => handleTouchMove(e, cat.id)}
+                onTouchEnd={(e) => handleTouchEnd(e, cat.id)}
               >
-                ✕
-              </button>
-              <h3>{cat.name}</h3>
-              <div className="category-meta" style={{ marginBottom: progress.attempted > 0 ? '12px' : '0' }}>
-                <span>📝 {cat.question_count} 题</span>
+                <button
+                  className="delete-btn"
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    const ok = await confirm(`确定要删除题库"${cat.name}"吗？`, '删除题库')
+                    if (ok) {
+                      deleteCategory(cat.id)
+                      persistAndRefresh().catch(() => {})
+                    }
+                  }}
+                >
+                  ✕
+                </button>
+                <h3>{cat.name}</h3>
+                <div className="category-meta" style={{ marginBottom: progress.attempted > 0 ? '12px' : '0' }}>
+                  <span>📝 {cat.question_count} 题</span>
+                  {progress.attempted > 0 && (
+                    <span>✅ {correctPct}% 正确率</span>
+                  )}
+                </div>
                 {progress.attempted > 0 && (
-                  <span>✅ {correctPct}% 正确率</span>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-light)' }}>
+                        已学 {progress.attempted}/{progress.total}
+                      </span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-light)' }}>{pct}%</span>
+                    </div>
+                    <div style={{ height: '4px', background: 'var(--border-light)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${pct}%`, height: '100%',
+                        background: pct >= 80 ? 'var(--success)' : pct >= 40 ? 'var(--primary)' : 'var(--warning)',
+                        borderRadius: '2px', transition: 'width 0.4s'
+                      }} />
+                    </div>
+                  </div>
                 )}
               </div>
-              {progress.attempted > 0 && (
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-light)' }}>
-                      已学 {progress.attempted}/{progress.total}
-                    </span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-light)' }}>{pct}%</span>
-                  </div>
-                  <div style={{ height: '4px', background: 'var(--border-light)', borderRadius: '2px', overflow: 'hidden' }}>
-                    <div style={{
-                      width: `${pct}%`, height: '100%',
-                      background: pct >= 80 ? 'var(--success)' : pct >= 40 ? 'var(--primary)' : 'var(--warning)',
-                      borderRadius: '2px', transition: 'width 0.4s'
-                    }} />
-                  </div>
-                </div>
-              )}
             </div>
           )})}
         </div>

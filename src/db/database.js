@@ -318,8 +318,8 @@ export function getStudyStats(categoryId = null) {
     params.push(categoryId);
   }
 
-  const total = safeExec(totalSql, params)[0].values[0][0];
-  const correct = safeExec(correctSql, params)[0].values[0][0];
+  const total = safeExec(totalSql, params)[0]?.values?.[0]?.[0] || 0;
+  const correct = safeExec(correctSql, params)[0]?.values?.[0]?.[0] || 0;
   return { total, correct, rate: total > 0 ? Math.round((correct / total) * 100) : 0 };
 }
 
@@ -487,9 +487,9 @@ export function getReviewStats() {
   const mastered = safeExec("SELECT COUNT(*) FROM review_state WHERE stage >= 5");
   
   return {
-    total: total[0].values[0][0],
-    due: due[0].values[0][0],
-    mastered: mastered[0].values[0][0]
+    total: total[0]?.values?.[0]?.[0] || 0,
+    due: due[0]?.values?.[0]?.[0] || 0,
+    mastered: mastered[0]?.values?.[0]?.[0] || 0
   };
 }
 
@@ -544,16 +544,16 @@ export function searchQuestions(keyword, categoryId = null) {
 
 // ======= Category Progress =======
 export function getCategoryProgress(categoryId) {
-  const total = safeExec('SELECT COUNT(*) FROM questions WHERE category_id = ?', [categoryId])[0].values[0][0];
+  const total = safeExec('SELECT COUNT(*) FROM questions WHERE category_id = ?', [categoryId])[0]?.values?.[0]?.[0] || 0;
   const attempted = safeExec(
     'SELECT COUNT(DISTINCT question_id) FROM study_records WHERE category_id = ?', [categoryId]
-  )[0].values[0][0];
+  )[0]?.values?.[0]?.[0] || 0;
   const correct = safeExec(
     `SELECT COUNT(DISTINCT question_id) FROM study_records 
      WHERE category_id = ? AND is_correct = 1 AND question_id NOT IN (
        SELECT question_id FROM study_records WHERE category_id = ? AND is_correct = 0
      )`, [categoryId, categoryId]
-  )[0].values[0][0];
+  )[0]?.values?.[0]?.[0] || 0;
   
   return { total, attempted, correct };
 }

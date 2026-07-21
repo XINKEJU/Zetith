@@ -31,7 +31,8 @@ export default function HomePage() {
   const [showConfetti, setShowConfetti] = useState(false)
   useEffect(() => {
     if (goalDone && !showConfetti) setShowConfetti(true)
-  }, [goalDone])
+    if (!goalDone && showConfetti) setShowConfetti(false)
+  }, [goalDone, showConfetti])
 
   // Find categories with recent activity (based on updated_at)
   const recentCategories = useMemo(() => {
@@ -59,19 +60,21 @@ export default function HomePage() {
           <h1>学习仪表盘</h1>
           <p>欢迎回来，准备好今天的学习了吗？</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <div style={{ 
+        <div className="home-header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{
             display: 'flex', alignItems: 'center', gap: '6px',
             background: 'var(--accent-light)', borderRadius: '16px',
             padding: '6px 14px', fontWeight: 800, fontSize: '14px',
-            color: 'var(--duo-green-dark)'
+            color: 'var(--duo-green-dark)',
+            whiteSpace: 'nowrap',
+            flexShrink: 0
           }}>
             ⚡ {levelInfo.xp} XP
           </div>
-          <button className="btn btn-outline btn-sm" onClick={handleSetGoal} title="设置每日目标">
+          <button className="btn btn-outline btn-sm" onClick={handleSetGoal} title="设置每日目标" style={{ flexShrink: 0 }}>
             🎯 {dailyGoal}
           </button>
-          <button className="btn btn-outline btn-sm" onClick={persistAndRefresh} title="刷新数据">
+          <button className="btn btn-outline btn-sm" onClick={persistAndRefresh} title="刷新数据" style={{ flexShrink: 0 }}>
             🔄
           </button>
         </div>

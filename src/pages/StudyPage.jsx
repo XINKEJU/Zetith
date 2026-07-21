@@ -15,7 +15,6 @@ export default function StudyPage() {
   const [category, setCategory] = useState(null)
   const [bookmarked, setBookmarked] = useState(false)
   const [note, setNote] = useState('')
-  const [noteLoaded, setNoteLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
   const { addToast } = useToast()
 
@@ -40,7 +39,6 @@ export default function StudyPage() {
       const q = questions[currentIndex]
       setBookmarked(isBookmarked(q?.id))
       setNote(getNote(q?.id))
-      setNoteLoaded(true)
     }
   }, [currentIndex, questions])
 
@@ -118,12 +116,12 @@ export default function StudyPage() {
 
   return (
     <div>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className="page-header study-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1>{category?.name || '浏览学习'}</h1>
           <p>共 {questions.length} 题 · 当前第 {currentIndex + 1} 题</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div className="study-actions" style={{ display: 'flex', gap: '8px' }}>
           <button className={`btn ${shuffleMode ? 'btn-primary' : 'btn-outline'}`} onClick={handleToggleShuffle}>
             🔀 {shuffleMode ? '顺序' : '随机'}
           </button>
@@ -198,6 +196,7 @@ export default function StudyPage() {
                 {/* Notes */}
                 <div style={{ marginTop: '16px' }}>
                   <textarea
+                    className="study-note-textarea"
                     value={note}
                     onChange={e => setNote(e.target.value)}
                     placeholder="📝 在这里写笔记..."

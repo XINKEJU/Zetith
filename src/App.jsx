@@ -23,9 +23,9 @@ function PageLoader() {
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
       <div style={{
         width: '6px', height: '6px', borderRadius: '50%',
-        background: 'var(--accent)', animation: 'pulse 0.8s ease infinite'
+        background: 'var(--accent)', animation: 'loaderPulse 0.8s ease infinite'
       }} />
-      <style>{`@keyframes pulse { 0%,100%{opacity:0.3;transform:scale(0.8)} 50%{opacity:1;transform:scale(1.2)} }`}</style>
+      <style>{`@keyframes loaderPulse { 0%,100%{opacity:0.3;transform:scale(0.8)} 50%{opacity:1;transform:scale(1.2)} }`}</style>
     </div>
   )
 }

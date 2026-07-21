@@ -1,4 +1,4 @@
-import { getQuestionById, getQuestionsByCategory, getRandomQuestions } from '../db/database';
+import { getQuestionsByCategory, getRandomQuestions } from '../db/database';
 
 // Shuffle array using Fisher-Yates
 export function shuffleArray(arr) {

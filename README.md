@@ -1,16 +1,83 @@
-# React + Vite
+# 知题 · Zetith
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+> 科学刷题，高效备考 — 智能题库学习系统
 
-Currently, two official plugins are available:
+<p align="center">
+  <img src="public/icon-192.png" width="96" alt="知题 Logo" />
+</p>
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## 品牌
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| 属性 | 值 |
+|------|-----|
+| 中文名 | **知题** |
+| 英文名 | **Zetith** |
+| 标语 | 科学刷题，高效备考 |
+| 主色 | 珊瑚暖橙 `#f2866e` |
 
-## Expanding the Oxlint configuration
+## 功能
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+| 模块 | 功能 |
+|------|------|
+| 题库管理 | Excel 批量导入、字段映射、预览确认、导出备份、下载模板 |
+| 浏览学习 | 顺序/随机浏览、显示答案解析、收藏、笔记 |
+| 答题练习 | 选题库/题量、选项乱序、标签/难度筛选、即时判题 |
+| 背题模式 | 卡片翻转 3D 动画，正面题干 → 翻转看答案 |
+| 模拟考试 | 倒计时、超时自动交卷、成绩单、各题型得分、错题回顾 |
+| 智能复习 | SM-2 间隔重复算法、掌握度评分、错题一键入队 |
+| 错题本 | 自动归集、按错误次数排序、彻底掌握 |
+| 收藏夹 | 跨题库汇总所有收藏题目 |
+| 学习统计 | Chart.js 可视化、每日趋势、题型分布、标签弱项诊断 |
+| 学习打卡 | 连续学习天数、每日目标进度条 |
+| 全局搜索 | ⌘K 模糊搜索、跨题库匹配 |
+| PWA | 可安装到桌面、离线可用、浏览器通知提醒 |
+
+## 技术栈
+
+- **框架**: React 18 + Vite
+- **数据库**: SQLite (WASM) via sql.js，OPFS 持久化
+- **Excel**: SheetJS (xlsx)
+- **图表**: Chart.js + react-chartjs-2
+- **路由**: react-router-dom v6（React.lazy 代码分割）
+- **PWA**: Service Worker + Web App Manifest
+
+## 快速开始
+
+```bash
+# 安装依赖
+npm install
+
+# 预构建数据库（将 tiku/ 目录下 Excel 导入）
+node scripts/prebuild-db.mjs
+
+# 启动开发服务器
+npm run dev
+```
+
+访问 `http://localhost:5173/`
+
+## 导入题库
+
+支持 `.xlsx` / `.xls` 格式，推荐列名：
+
+| 题型 | 题干 | 选项A | 选项B | 选项C | 选项D | 答案 | 解析 | 难度 | 标签 |
+|------|------|-------|-------|-------|-------|------|------|------|------|
+
+系统自动识别列名并映射，也可下载 `template.xlsx` 模板参考。
+
+## 快捷键
+
+| 快捷键 | 功能 |
+|--------|------|
+| ⌘1-7 | 页面切换 |
+| ⌘K | 全局搜索 |
+| ⌘T | 日夜模式切换 |
+| ? | 快捷键帮助 |
+| ← → | 翻题 |
+| Space | 显示/隐藏答案 |
+
+## 许可
+
+MIT

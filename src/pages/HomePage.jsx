@@ -1,19 +1,21 @@
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { getDailyStats, getStreak, getTodayCount } from '../db/database'
+import { getStreak, getTodayCount, getLevelInfo } from '../db/database'
 
 export default function HomePage() {
   const navigate = useNavigate()
   const { categories, stats, wrongCount, persistAndRefresh } = useApp()
   
   const [dailyGoal, setDailyGoal] = useState(() => {
-    return parseInt(localStorage.getItem('dailyGoal') || '50')
+    const v = parseInt(localStorage.getItem('dailyGoal') || '50')
+    return isNaN(v) || v <= 0 ? 50 : v
   })
   
   const streak = useMemo(() => { try { return getStreak() } catch { return { streak: 0, todayDone: false } } }, [stats])
   const todayCount = useMemo(() => { try { return getTodayCount() } catch { return 0 } }, [stats])
-  
+  const levelInfo = useMemo(() => { try { return getLevelInfo() } catch { return { level: '新手', color: '#b0b0b6', xp: 0, nextXp: 100, pct: 0 } } }, [stats])
+
   const handleSetGoal = () => {
     const val = prompt('设置每日答题目标（题）:', dailyGoal)
     if (val && parseInt(val) > 0) {
@@ -24,10 +26,6 @@ export default function HomePage() {
   
   const goalPct = Math.min(100, Math.round((todayCount / dailyGoal) * 100))
   const goalDone = todayCount >= dailyGoal
-
-  const dailyStats = useMemo(() => {
-    try { return getDailyStats(7) } catch { return [] }
-  }, [categories, stats])
 
   // Find categories with recent activity (based on updated_at)
   const recentCategories = useMemo(() => {
@@ -54,56 +52,73 @@ export default function HomePage() {
           <h1>学习仪表盘</h1>
           <p>欢迎回来，准备好今天的学习了吗？</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="btn btn-outline" onClick={handleSetGoal} 
-            style={{ fontSize: '12px' }} title="设置每日目标">
-            目标 {dailyGoal} 题
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ 
+            display: 'flex', alignItems: 'center', gap: '6px',
+            background: 'var(--accent-light)', borderRadius: '16px',
+            padding: '6px 14px', fontWeight: 800, fontSize: '14px',
+            color: 'var(--duo-green-dark)'
+          }}>
+            ⚡ {levelInfo.xp} XP
+          </div>
+          <button className="btn btn-outline btn-sm" onClick={handleSetGoal} title="设置每日目标">
+            🎯 {dailyGoal}
           </button>
-          <button className="btn btn-outline" onClick={persistAndRefresh} style={{ fontSize: '12px' }} title="刷新数据">
-            刷新
+          <button className="btn btn-outline btn-sm" onClick={persistAndRefresh} title="刷新数据">
+            🔄
           </button>
         </div>
       </div>
 
-      {/* Daily goal + streak */}
+      {/* Streak + XP card */}
       <div style={{ marginBottom: '24px' }}>
-        <div className="card" style={{ padding: '18px 24px', border: goalDone ? '1px solid var(--green)' : '1px solid var(--border-light)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: goalDone ? '0' : '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="card" style={{ 
+          padding: '20px 28px', 
+          border: goalDone ? '3px solid var(--duo-green)' : '2px solid var(--border-light)',
+          background: goalDone ? 'var(--green-light)' : 'var(--bg-card)',
+          borderBottomWidth: goalDone ? '6px' : '4px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <div style={{
-                width: '44px', height: '44px', borderRadius: '12px',
-                background: goalDone ? 'var(--green-light)' : 'var(--accent-light)',
+                width: '52px', height: '52px', borderRadius: '16px',
+                background: goalDone 
+                  ? 'linear-gradient(135deg, var(--duo-green), var(--duo-green-dark))' 
+                  : 'var(--bg)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '20px', fontWeight: 700,
-                color: goalDone ? 'var(--green)' : 'var(--accent)'
+                fontSize: '26px',
+                boxShadow: goalDone ? '0 3px 0 var(--duo-green-shadow)' : 'none',
+                animation: streak.streak > 0 ? 'pulse 2s ease-in-out infinite' : 'none'
               }}>
-                {streak.streak > 0 ? streak.streak : '0'}
+                {goalDone ? '🔥' : '💤'}
               </div>
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 600 }}>
+                <div style={{ fontSize: '16px', fontWeight: 800 }}>
                   {streak.streak > 0 ? `连续学习 ${streak.streak} 天` : '今天还没有学习'}
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                  {goalDone ? '今日目标已达成！' : `今日进度 ${todayCount}/${dailyGoal} 题`}
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                  {goalDone ? '🔥 今日目标已达成！太棒了！' : `今日进度 ${todayCount}/${dailyGoal} 题`}
                 </div>
               </div>
             </div>
-            {!goalDone && (
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--accent)' }}>{goalPct}%</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>目标进度</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '4px' }}>
+                {levelInfo.level}
               </div>
-            )}
-            {goalDone && (
-              <div style={{ fontSize: '13px', color: 'var(--green)', fontWeight: 600 }}>已完成</div>
-            )}
+              <div style={{ fontSize: '20px', fontWeight: 900, color: levelInfo.color }}>
+                {levelInfo.pct}%
+              </div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                距下一级
+              </div>
+            </div>
           </div>
           {!goalDone && (
-            <div style={{ height: '5px', background: 'var(--border-light)', borderRadius: '10px', overflow: 'hidden' }}>
+            <div style={{ height: '10px', background: 'var(--border-light)', borderRadius: '10px', overflow: 'hidden', marginTop: '14px' }}>
               <div style={{
                 width: `${goalPct}%`, height: '100%',
-                background: 'linear-gradient(90deg, var(--accent), var(--accent-dark))',
-                borderRadius: '10px', transition: 'width 0.5s ease'
+                background: goalPct > 60 ? 'linear-gradient(90deg, var(--duo-green), var(--duo-blue))' : 'linear-gradient(90deg, var(--duo-orange), var(--duo-gold))',
+                borderRadius: '10px', transition: 'width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)'
               }} />
             </div>
           )}
@@ -112,19 +127,19 @@ export default function HomePage() {
 
       <div className="stat-cards">
         <div className="stat-card">
-          <div className="stat-value">{stats.total}</div>
+          <div className="stat-value" style={{ color: 'var(--duo-green)' }}>{stats.total.toLocaleString()}</div>
           <div className="stat-label">总答题数</div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">{stats.rate}%</div>
+          <div className="stat-value" style={{ color: stats.rate >= 60 ? 'var(--duo-green)' : 'var(--duo-orange)' }}>{stats.rate}%</div>
           <div className="stat-label">正确率</div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">{totalQuestions.toLocaleString()}</div>
+          <div className="stat-value" style={{ color: 'var(--duo-blue)' }}>{totalQuestions.toLocaleString()}</div>
           <div className="stat-label">题库总题数</div>
         </div>
         <div className="stat-card">
-          <div className="stat-value" style={{ color: wrongCount > 0 ? 'var(--danger)' : 'var(--success)' }}>
+          <div className="stat-value" style={{ color: wrongCount > 0 ? 'var(--duo-red)' : 'var(--duo-green)' }}>
             {wrongCount}
           </div>
           <div className="stat-label">待复习错题</div>
@@ -134,20 +149,22 @@ export default function HomePage() {
         {difficultySummary && (
           <div className="card" style={{ 
             display: 'flex', alignItems: 'center', gap: '12px', 
-            padding: '14px 24px', marginBottom: '24px',
-            background: 'var(--accent-light)', border: 'none'
+            padding: '16px 24px', marginBottom: '24px',
+            background: 'var(--accent-light)', border: 'none',
+            borderRadius: '16px', borderBottom: '4px solid var(--duo-green)'
           }}>
-            <span style={{ fontSize: '13px', color: 'var(--accent-dark)', fontWeight: 520 }}>
+            <span style={{ fontSize: '24px' }}>💡</span>
+            <span style={{ fontSize: '14px', color: 'var(--duo-green-dark)', fontWeight: 800 }}>
               {difficultySummary.text}
             </span>
           </div>
         )}
 
       <div style={{ marginBottom: '24px' }}>
-        <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>快捷操作</h3>
+        <h3 style={{ fontSize: '18px', marginBottom: '14px', fontWeight: 800 }}>快捷操作</h3>
         <div className="quick-actions">
           <QuickAction
-            label="Re" iconBg="var(--accent-light)" title="浏览学习"
+            label="📖" iconBg="#E5F8D3" title="浏览学习"
             desc={categories.length > 0 ? '选择题库，按顺序或随机浏览题目' : '还没有题库'}
             disabled={categories.length === 0}
             onClick={() => {
@@ -155,29 +172,29 @@ export default function HomePage() {
             }}
           />
           <QuickAction
-            label="Pr" iconBg="var(--green-light)" title="答题练习"
+            label="✏️" iconBg="#E3F2FD" title="答题练习"
             desc="自选题库与题量，即时判题反馈"
             disabled={totalQuestions === 0}
             onClick={() => navigate('/practice')}
           />
           <QuickAction
-            label="Ex" iconBg="var(--red-light)" title="模拟考试"
+            label="🏆" iconBg="#FFE5E5" title="模拟考试"
             desc="倒计时、自动交卷、成绩分析"
             disabled={totalQuestions === 0}
             onClick={() => navigate('/exam')}
           />
           <QuickAction
-            label="Rv" iconBg="var(--amber-light)" title="智能复习"
+            label="🧠" iconBg="#F3E5F5" title="智能复习"
             desc="基于间隔重复算法的科学复习"
             onClick={() => navigate('/review')}
           />
           <QuickAction
-            label="Wr" iconBg="var(--red-light)" title="错题本"
+            label="📝" iconBg="#FFF0DA" title="错题本"
             desc={wrongCount > 0 ? `${wrongCount} 道错题待复习` : '暂无错题'}
             onClick={() => navigate('/wrongbook')}
           />
           <QuickAction
-            label="St" iconBg="var(--green-light)" title="学习统计"
+            label="📊" iconBg="#E5F8D3" title="学习统计"
             desc="正确率趋势、弱项诊断"
             onClick={() => navigate('/stats')}
           />

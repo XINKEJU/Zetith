@@ -7,6 +7,7 @@ import { useToast } from '../components/ToastProvider'
 export default function StudyPage() {
   const { categoryId } = useParams()
   const navigate = useNavigate()
+  const catId = parseInt(categoryId)
   const [questions, setQuestions] = useState([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [showAnswer, setShowAnswer] = useState(false)
@@ -19,13 +20,17 @@ export default function StudyPage() {
   const { addToast } = useToast()
 
   useEffect(() => {
-    const cat = getCategoryById(parseInt(categoryId))
+    if (isNaN(catId)) {
+      navigate('/categories')
+      return
+    }
+    const cat = getCategoryById(catId)
     if (!cat) {
       navigate('/categories')
       return
     }
     setCategory(cat)
-    const qs = getQuestionsByCategory(parseInt(categoryId))
+    const qs = getQuestionsByCategory(catId)
     setQuestions(qs)
     setLoading(false)
   }, [categoryId, navigate])
@@ -44,11 +49,11 @@ export default function StudyPage() {
 
   const handleToggleShuffle = () => {
     if (shuffleMode) {
-      const qs = getQuestionsByCategory(parseInt(categoryId))
+      const qs = getQuestionsByCategory(catId)
       setQuestions(qs)
       setCurrentIndex(0)
     } else {
-      const qs = getQuestionsByCategory(parseInt(categoryId))
+      const qs = getQuestionsByCategory(catId)
       setQuestions(shuffleArray(qs))
       setCurrentIndex(0)
     }
@@ -112,7 +117,7 @@ export default function StudyPage() {
             🔀 {shuffleMode ? '顺序' : '随机'}
           </button>
           <button className="btn btn-outline" onClick={() => navigate('/categories')}>
-            Back
+            返回
           </button>
         </div>
       </div>
@@ -164,7 +169,7 @@ export default function StudyPage() {
             {!showAnswer ? (
               <div style={{ textAlign: 'center' }}>
                 <button className="btn btn-primary btn-large" onClick={() => setShowAnswer(true)}>
-                  Show Answer
+                  显示答案
                 </button>
                 <p style={{ fontSize: '12px', color: 'var(--text-light)', marginTop: '8px' }}>
                   提示：按空格键显示/隐藏答案，← → 切换题目
@@ -198,7 +203,7 @@ export default function StudyPage() {
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
                     <button className="btn btn-outline" style={{ fontSize: '12px', padding: '4px 12px' }}
                       onClick={handleSaveNote}>
-                      Save
+                      保存
                     </button>
                   </div>
                 </div>
@@ -208,7 +213,7 @@ export default function StudyPage() {
                     ← 上一题
                   </button>
                   <button className="btn btn-primary" onClick={() => setShowAnswer(false)}>
-                    Hide Answer
+                    隐藏答案
                   </button>
                   <button className="btn btn-outline" onClick={handleNext} disabled={currentIndex === questions.length - 1}>
                     下一题 →

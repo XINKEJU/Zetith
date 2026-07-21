@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { saveStudyRecord } from '../db/database'
+import { saveStudyRecord, saveSession } from '../db/database'
 import { prepareQuestionForDisplay, checkAnswer, getQuestionsForPractice } from '../services/studyService'
 
 export default function ExamPage() {
@@ -49,6 +49,21 @@ export default function ExamPage() {
   }
 
   // Timer
+  const handleSubmitExam = useCallback(() => {
+    if (finished) return
+    setFinished(true)
+    clearTimeout(timerRef.current)
+    const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000)
+    const correctCount = results.filter(r => r.isCorrect).length
+    saveSession({
+      type: 'exam', categoryId: parseInt(selectedCategory) || null, total: questions.length,
+      correct: correctCount, timeSpent: elapsed,
+      score: questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0,
+      items: results.map((r, i) => ({ questionId: questions[i]?.id, isCorrect: r.isCorrect }))
+    })
+    persistAndRefresh().catch(() => {})
+  }, [finished, persistAndRefresh, selectedCategory, questions, results])
+
   useEffect(() => {
     if (!setupDone || finished) return
     if (timeLeft <= 0) {
@@ -57,7 +72,7 @@ export default function ExamPage() {
     }
     timerRef.current = setTimeout(() => setTimeLeft(t => t - 1), 1000)
     return () => clearTimeout(timerRef.current)
-  }, [timeLeft, setupDone, finished])
+  }, [timeLeft, setupDone, finished, handleSubmitExam])
 
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60)
@@ -90,20 +105,13 @@ export default function ExamPage() {
     }
   }
 
-  const handleSubmitExam = () => {
-    if (finished) return
-    setFinished(true)
-    clearTimeout(timerRef.current)
-    persistAndRefresh()
-  }
-
   const correctCount = results.filter(r => r.isCorrect).length
   const score = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0
   const passed = score >= passingScore
   const totalTime = Math.round((Date.now() - startTimeRef.current) / 1000)
 
   // Type breakdown
-  const typeBreakdown = () => {
+  const typeBreakdown = useMemo(() => {
     const map = {}
     results.forEach((r, i) => {
       const type = questions[i]?.question_type || '未知'
@@ -112,7 +120,7 @@ export default function ExamPage() {
       if (r.isCorrect) map[type].correct++
     })
     return Object.entries(map)
-  }
+  }, [results, questions])
 
   // Setup screen
   if (!setupDone) {
@@ -190,7 +198,7 @@ export default function ExamPage() {
             {score}
           </div>
           <div className="result-label">
-            {passed ? 'Passed!' : 'Failed, try again'}
+            {passed ? '通过！' : '不合格，请继续努力'}
           </div>
 
           <div className="result-details">
@@ -214,7 +222,7 @@ export default function ExamPage() {
           <div style={{ marginTop: '20px', textAlign: 'left' }}>
             <h4 style={{ fontSize: '15px', marginBottom: '12px' }}>各题型得分</h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {typeBreakdown().map(([type, data]) => (
+              {typeBreakdown.map(([type, data]) => (
                 <div key={type} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={{ width: '60px', fontSize: '13px', color: 'var(--text-secondary)' }}>{type}</span>
                   <div style={{ flex: 1, height: '8px', background: 'var(--border-light)', borderRadius: '4px', overflow: 'hidden' }}>
@@ -237,7 +245,7 @@ export default function ExamPage() {
             <div style={{ marginTop: '20px', textAlign: 'left' }}>
               <h4 style={{ fontSize: '15px', marginBottom: '12px' }}>错题回顾</h4>
               <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                {results.map((r, i) => !r.isCorrect && (
+                {results.map((r, i) => !r.isCorrect ? (
                   <div key={i} style={{
                     padding: '12px', marginBottom: '8px', borderRadius: '8px',
                     background: 'var(--danger-light)', fontSize: '13px'
@@ -251,20 +259,20 @@ export default function ExamPage() {
                       {' '}正确答案: <span style={{ color: 'var(--success)', fontWeight: 600 }}>{r.correctAnswer}</span>
                     </div>
                   </div>
-                ))}
+                ) : null)}
               </div>
             </div>
           )}
 
           <div className="action-bar" style={{ marginTop: '24px' }}>
             <button className="btn btn-primary" onClick={() => { setSetupDone(false); setFinished(false) }}>
-              Retry
+              重新考试
             </button>
             <button className="btn btn-outline" onClick={() => navigate('/wrongbook')}>
               📝 错题本
             </button>
             <button className="btn btn-outline" onClick={() => navigate('/')}>
-              Home
+              返回首页
             </button>
           </div>
         </div>
@@ -342,7 +350,7 @@ export default function ExamPage() {
                 <button className="btn btn-primary" onClick={handleNext}>下一题 →</button>
               ) : (
                 <button className="btn btn-success btn-large" onClick={handleSubmitExam}>
-                  Submit
+                  提交试卷
                 </button>
               )}
             </div>

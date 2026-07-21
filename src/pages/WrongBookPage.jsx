@@ -1,15 +1,18 @@
 import React, { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { getWrongQuestions, getQuestionById, saveStudyRecord, markQuestionMastered } from '../db/database'
+import { getWrongQuestions, getQuestionById, saveStudyRecord, markQuestionMastered, markWrongReason } from '../db/database'
 import { prepareQuestionForDisplay, checkAnswer } from '../services/studyService'
 import { useToast } from '../components/ToastProvider'
+
+const WRONG_REASONS = ['概念模糊', '审题不清', '记忆混淆', '计算失误', '知识盲区']
 
 export default function WrongBookPage() {
   const navigate = useNavigate()
   const { categories, persistAndRefresh } = useApp()
   const { addToast, confirm } = useToast()
   const [filterCategoryId, setFilterCategoryId] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
   const [practicingId, setPracticingId] = useState(null)
   const [practiceQuestion, setPracticeQuestion] = useState(null)
   const [displayQuestion, setDisplayQuestion] = useState(null)
@@ -19,7 +22,7 @@ export default function WrongBookPage() {
 
   const wrongQuestions = useMemo(() => {
     return getWrongQuestions(filterCategoryId ? parseInt(filterCategoryId) : null)
-  }, [filterCategoryId])
+  }, [filterCategoryId, refreshKey])
 
   const startPracticeQuestion = (questionId) => {
     const q = getQuestionById(questionId)
@@ -39,7 +42,8 @@ export default function WrongBookPage() {
     setAnswerResult(result)
     setSubmitted(true)
     saveStudyRecord(practiceQuestion.id, practiceQuestion.category_id, result.isCorrect, result.userAnswer, 0)
-    persistAndRefresh()
+    persistAndRefresh().catch(() => {})
+    setRefreshKey(k => k + 1)
   }
 
   const handleBack = () => {
@@ -111,13 +115,31 @@ export default function WrongBookPage() {
                   <p style={{ marginTop: '8px' }}>{practiceQuestion.explanation}</p>
                 )}
               </div>
+              {!answerResult?.isCorrect && (
+                <div style={{ marginTop: '14px' }}>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>错因标记：</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {WRONG_REASONS.map(reason => (
+                      <button key={reason} className="btn btn-outline btn-sm"
+                        style={{ fontSize: '11px' }}
+                        onClick={() => {
+                          markWrongReason(practiceQuestion.id, reason)
+                          addToast(`已标记: ${reason}`, 'info')
+                        }}>
+                        {reason}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="action-bar">
                 <button className="btn btn-primary" onClick={handleBack}>返回列表</button>
                 <button className="btn btn-success" onClick={async () => {
                   const ok = await confirm('确定这道题已经彻底掌握了吗？', '彻底掌握')
                   if (ok) {
                     markQuestionMastered(practiceQuestion.id)
-                    persistAndRefresh()
+                    persistAndRefresh().catch(() => {})
+                    setRefreshKey(k => k + 1)
                     addToast('已掌握，从错题本移除', 'success')
                     handleBack()
                   }
@@ -180,7 +202,8 @@ export default function WrongBookPage() {
                   const ok = await confirm('确定这道题已经彻底掌握了吗？将从错题本中移除。', '彻底掌握')
                   if (ok) {
                     markQuestionMastered(q.id)
-                    persistAndRefresh()
+                    persistAndRefresh().catch(() => {})
+                    setRefreshKey(k => k + 1)
                     addToast('已从错题本移除', 'success')
                   }
                 }}>

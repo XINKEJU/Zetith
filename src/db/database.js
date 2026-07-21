@@ -3,6 +3,21 @@ import initSqlJs from 'sql.js';
 let db = null;
 let SQL = null;
 
+const isDev = import.meta.env.DEV;
+
+// Safe exec helper
+function safeExec(sql, params = []) {
+  if (!db) return [];
+  try { return db.exec(sql, params) } catch (e) { if (isDev) console.error('DB error:', e.message); return [] }
+}
+function safeRun(sql, params = []) {
+  if (!db) return;
+  try { db.run(sql, params) } catch (e) { if (isDev) console.error('DB run error:', e.message) }
+}
+function safeGet(result, defaultValue) {
+  if (!result || !result.length || !result[0]?.values?.length) return defaultValue
+  return result[0].values
+}
 async function getOPFSFile() {
   const root = await navigator.storage.getDirectory();
   try {
@@ -84,7 +99,7 @@ export async function initDatabase(onProgress) {
     }
   }
 
-  db.run(`CREATE TABLE IF NOT EXISTS categories (
+  safeRun(`CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     description TEXT DEFAULT '',
@@ -92,7 +107,7 @@ export async function initDatabase(onProgress) {
     updated_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS questions (
+  safeRun(`CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     category_id INTEGER NOT NULL,
     question_type TEXT DEFAULT '单选题',
@@ -109,26 +124,38 @@ export async function initDatabase(onProgress) {
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
   )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS study_records (
+  safeRun(`CREATE TABLE IF NOT EXISTS study_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     question_id INTEGER NOT NULL,
     category_id INTEGER NOT NULL,
     is_correct INTEGER NOT NULL DEFAULT 0,
     answer_given TEXT DEFAULT '',
     time_spent INTEGER DEFAULT 0,
+    wrong_reason TEXT DEFAULT '',
     practiced_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
   )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS bookmarks (
+  // 迁移：为旧数据库添加 wrong_reason 列
+  try {
+    const columns = safeExec('PRAGMA table_info(study_records)');
+    if (columns.length) {
+      const colNames = columns[0].values.map(row => row[1]);
+      if (!colNames.includes('wrong_reason')) {
+        safeRun('ALTER TABLE study_records ADD COLUMN wrong_reason TEXT DEFAULT \'\'');
+      }
+    }
+  } catch (e) { /* 忽略迁移错误 */ }
+
+  safeRun(`CREATE TABLE IF NOT EXISTS bookmarks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     question_id INTEGER NOT NULL,
     created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
   )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS review_state (
+  safeRun(`CREATE TABLE IF NOT EXISTS review_state (
     question_id INTEGER PRIMARY KEY,
     stage INTEGER NOT NULL DEFAULT 0,
     ease_factor REAL NOT NULL DEFAULT 2.5,
@@ -138,7 +165,7 @@ export async function initDatabase(onProgress) {
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
   )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS notes (
+  safeRun(`CREATE TABLE IF NOT EXISTS notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     question_id INTEGER NOT NULL UNIQUE,
     content TEXT DEFAULT '',
@@ -146,9 +173,32 @@ export async function initDatabase(onProgress) {
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
   )`);
 
-  db.run(`CREATE INDEX IF NOT EXISTS idx_questions_category ON questions(category_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_records_question ON study_records(question_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_records_category ON study_records(category_id)`);
+  safeRun(`CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL DEFAULT 'practice',
+    category_id INTEGER,
+    total INTEGER DEFAULT 0,
+    correct INTEGER DEFAULT 0,
+    time_spent INTEGER DEFAULT 0,
+    score REAL DEFAULT 0,
+    started_at TEXT DEFAULT (datetime('now','localtime')),
+    finished_at TEXT
+  )`);
+
+  safeRun(`CREATE TABLE IF NOT EXISTS session_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    question_id INTEGER NOT NULL,
+    is_correct INTEGER DEFAULT 0,
+    answer_given TEXT DEFAULT '',
+    time_spent INTEGER DEFAULT 0,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE SET NULL
+  )`);
+
+  safeRun(`CREATE INDEX IF NOT EXISTS idx_questions_category ON questions(category_id)`);
+  safeRun(`CREATE INDEX IF NOT EXISTS idx_records_question ON study_records(question_id)`);
+  safeRun(`CREATE INDEX IF NOT EXISTS idx_records_category ON study_records(category_id)`);
 
   await saveDatabase();
   return db;
@@ -166,7 +216,7 @@ export function getDatabase() {
 
 // Category operations
 export function getAllCategories() {
-  const result = db.exec(`SELECT c.*, 
+  const result = safeExec(`SELECT c.*, 
     (SELECT COUNT(*) FROM questions WHERE category_id = c.id) as question_count
     FROM categories c ORDER BY c.updated_at DESC`);
   if (!result.length) return [];
@@ -177,16 +227,16 @@ export function getAllCategories() {
 }
 
 export function createCategory(name, description = '') {
-  db.run('INSERT INTO categories (name, description) VALUES (?, ?)', [name, description]);
-  return db.exec('SELECT last_insert_rowid()')[0].values[0][0];
+  safeRun('INSERT INTO categories (name, description) VALUES (?, ?)', [name, description]);
+  return safeExec('SELECT last_insert_rowid()')[0].values[0][0];
 }
 
 export function deleteCategory(id) {
-  db.run('DELETE FROM categories WHERE id = ?', [id]);
+  safeRun('DELETE FROM categories WHERE id = ?', [id]);
 }
 
 export function getCategoryById(id) {
-  const result = db.exec('SELECT * FROM categories WHERE id = ?', [id]);
+  const result = safeExec('SELECT * FROM categories WHERE id = ?', [id]);
   if (!result.length || !result[0].values.length) return null;
   const row = result[0].values[0];
   return { id: row[0], name: row[1], description: row[2], created_at: row[3], updated_at: row[4] };
@@ -213,20 +263,21 @@ export function insertQuestions(questions) {
 
 export function getQuestionsByCategory(categoryId, limit = null, offset = 0) {
   let sql = 'SELECT * FROM questions WHERE category_id = ? ORDER BY id';
-  if (limit !== null) sql += ` LIMIT ${limit} OFFSET ${offset}`;
-  const result = db.exec(sql, [categoryId]);
+  const params = [categoryId];
+  if (limit !== null) { sql += ' LIMIT ? OFFSET ?'; params.push(limit, offset); }
+  const result = safeExec(sql, params);
   if (!result.length) return [];
   return result[0].values.map(mapQuestionRow);
 }
 
 export function getQuestionById(id) {
-  const result = db.exec('SELECT * FROM questions WHERE id = ?', [id]);
+  const result = safeExec('SELECT * FROM questions WHERE id = ?', [id]);
   if (!result.length || !result[0].values.length) return null;
   return mapQuestionRow(result[0].values[0]);
 }
 
 export function getRandomQuestions(categoryId, count) {
-  const result = db.exec(
+  const result = safeExec(
     'SELECT * FROM questions WHERE category_id = ? ORDER BY RANDOM() LIMIT ?',
     [categoryId, count]
   );
@@ -235,7 +286,7 @@ export function getRandomQuestions(categoryId, count) {
 }
 
 export function getQuestionCount(categoryId) {
-  const result = db.exec('SELECT COUNT(*) FROM questions WHERE category_id = ?', [categoryId]);
+  const result = safeExec('SELECT COUNT(*) FROM questions WHERE category_id = ?', [categoryId]);
   return result[0].values[0][0];
 }
 
@@ -250,7 +301,7 @@ function mapQuestionRow(row) {
 
 // Study records
 export function saveStudyRecord(questionId, categoryId, isCorrect, answerGiven, timeSpent) {
-  db.run(
+  safeRun(
     'INSERT INTO study_records (question_id, category_id, is_correct, answer_given, time_spent) VALUES (?, ?, ?, ?, ?)',
     [questionId, categoryId, isCorrect ? 1 : 0, answerGiven, timeSpent]
   );
@@ -267,8 +318,8 @@ export function getStudyStats(categoryId = null) {
     params.push(categoryId);
   }
 
-  const total = db.exec(totalSql, params)[0].values[0][0];
-  const correct = db.exec(correctSql, params)[0].values[0][0];
+  const total = safeExec(totalSql, params)[0].values[0][0];
+  const correct = safeExec(correctSql, params)[0].values[0][0];
   return { total, correct, rate: total > 0 ? Math.round((correct / total) * 100) : 0 };
 }
 
@@ -291,7 +342,7 @@ export function getWrongQuestions(categoryId = null) {
   
   sql += ' GROUP BY q.id ORDER BY wrong_count DESC, last_wrong_time DESC';
   
-  const result = db.exec(sql, params);
+  const result = safeExec(sql, params);
   if (!result.length) return [];
   
   return result[0].values.map(row => ({
@@ -304,45 +355,45 @@ export function getWrongQuestions(categoryId = null) {
 export function getWrongQuestionIds(categoryId = null) {
   let sql = 'SELECT DISTINCT question_id FROM study_records WHERE is_correct = 0';
   if (categoryId) sql += ' AND category_id = ?';
-  const result = db.exec(sql, categoryId ? [categoryId] : []);
+  const result = safeExec(sql, categoryId ? [categoryId] : []);
   if (!result.length) return new Set();
   return new Set(result[0].values.map(r => r[0]));
 }
 
 // Bookmarks
 export function toggleBookmark(questionId) {
-  const existing = db.exec('SELECT id FROM bookmarks WHERE question_id = ?', [questionId]);
+  const existing = safeExec('SELECT id FROM bookmarks WHERE question_id = ?', [questionId]);
   if (existing.length && existing[0].values.length) {
-    db.run('DELETE FROM bookmarks WHERE question_id = ?', [questionId]);
+    safeRun('DELETE FROM bookmarks WHERE question_id = ?', [questionId]);
     return false;
   } else {
-    db.run('INSERT INTO bookmarks (question_id) VALUES (?)', [questionId]);
+    safeRun('INSERT INTO bookmarks (question_id) VALUES (?)', [questionId]);
     return true;
   }
 }
 
 export function isBookmarked(questionId) {
-  const result = db.exec('SELECT id FROM bookmarks WHERE question_id = ?', [questionId]);
+  const result = safeExec('SELECT id FROM bookmarks WHERE question_id = ?', [questionId]);
   return result.length > 0 && result[0].values.length > 0;
 }
 
 export function getBookmarkIds() {
-  const result = db.exec('SELECT question_id FROM bookmarks');
+  const result = safeExec('SELECT question_id FROM bookmarks');
   if (!result.length) return new Set();
   return new Set(result[0].values.map(r => r[0]));
 }
 
 // Stats
 export function getDailyStats(days = 7) {
-  const result = db.exec(`
+  const result = safeExec(`
     SELECT date(practiced_at) as day,
       COUNT(*) as total,
       SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct
     FROM study_records
-    WHERE practiced_at >= datetime('now', '-${days} days', 'localtime')
+    WHERE practiced_at >= datetime('now', ? || ' days', 'localtime')
     GROUP BY date(practiced_at)
     ORDER BY day ASC
-  `);
+  `, [`-${days}`]);
   if (!result.length) return [];
   return result[0].values.map(row => ({
     day: row[0], total: row[1], correct: row[2],
@@ -367,7 +418,7 @@ export function sm2Update(quality, stage, easeFactor, interval) {
 }
 
 export function setReviewState(questionId, quality) {
-  const existing = db.exec('SELECT stage, ease_factor, interval_days FROM review_state WHERE question_id = ?', [questionId]);
+  const existing = safeExec('SELECT stage, ease_factor, interval_days FROM review_state WHERE question_id = ?', [questionId]);
   let stage = 0, easeFactor = 2.5, interval = 0;
 
   if (existing.length && existing[0].values.length) {
@@ -380,7 +431,7 @@ export function setReviewState(questionId, quality) {
   const nextReview = new Date();
   nextReview.setDate(nextReview.getDate() + updated.interval);
 
-  db.run(`INSERT OR REPLACE INTO review_state 
+  safeRun(`INSERT OR REPLACE INTO review_state 
     (question_id, stage, ease_factor, interval_days, next_review_at, last_reviewed_at)
     VALUES (?, ?, ?, ?, datetime(?, 'localtime'), datetime('now','localtime'))`,
     [questionId, updated.stage, updated.easeFactor, updated.interval,
@@ -401,18 +452,18 @@ export function getDueReviewQuestions(categoryId = null) {
   
   if (categoryId) {
     sql = sql.replace('WHERE rs.next_review_at', 'WHERE q.category_id = ? AND rs.next_review_at');
-    const result = db.exec(sql, [categoryId]);
+    const result = safeExec(sql, [categoryId]);
     if (!result.length) return [];
     return result[0].values.map(mapReviewRow);
   }
   
-  const result = db.exec(sql);
+  const result = safeExec(sql);
   if (!result.length) return [];
   return result[0].values.map(mapReviewRow);
 }
 
 export function getReviewDueCount() {
-  const result = db.exec(
+  const result = safeExec(
     "SELECT COUNT(*) FROM review_state WHERE next_review_at <= datetime('now', 'localtime')"
   );
   return result[0].values[0][0];
@@ -423,7 +474,7 @@ export function addToReviewQueue(questionId, stage = 0, easeFactor = 2.5, interv
   const nextReview = new Date();
   nextReview.setDate(nextReview.getDate() + interval);
   
-  db.run(`INSERT OR REPLACE INTO review_state
+  safeRun(`INSERT OR REPLACE INTO review_state
     (question_id, stage, ease_factor, interval_days, next_review_at, last_reviewed_at)
     VALUES (?, ?, ?, ?, datetime(?, 'localtime'), datetime('now','localtime'))`,
     [questionId, stage, easeFactor, interval, nextReview.toISOString().slice(0, 19)]
@@ -431,9 +482,9 @@ export function addToReviewQueue(questionId, stage = 0, easeFactor = 2.5, interv
 }
 
 export function getReviewStats() {
-  const total = db.exec("SELECT COUNT(*) FROM review_state");
-  const due = db.exec("SELECT COUNT(*) FROM review_state WHERE next_review_at <= datetime('now', 'localtime')");
-  const mastered = db.exec("SELECT COUNT(*) FROM review_state WHERE stage >= 5");
+  const total = safeExec("SELECT COUNT(*) FROM review_state");
+  const due = safeExec("SELECT COUNT(*) FROM review_state WHERE next_review_at <= datetime('now', 'localtime')");
+  const mastered = safeExec("SELECT COUNT(*) FROM review_state WHERE stage >= 5");
   
   return {
     total: total[0].values[0][0],
@@ -454,13 +505,13 @@ function mapReviewRow(row) {
 
 // ======= Notes =======
 export function getNote(questionId) {
-  const result = db.exec('SELECT content FROM notes WHERE question_id = ?', [questionId]);
+  const result = safeExec('SELECT content FROM notes WHERE question_id = ?', [questionId]);
   if (!result.length || !result[0].values.length) return '';
   return result[0].values[0][0] || '';
 }
 
 export function saveNote(questionId, content) {
-  db.run(`INSERT OR REPLACE INTO notes (question_id, content, updated_at) VALUES (?, ?, datetime('now','localtime'))`,
+  safeRun(`INSERT OR REPLACE INTO notes (question_id, content, updated_at) VALUES (?, ?, datetime('now','localtime'))`,
     [questionId, content]
   );
 }
@@ -481,7 +532,7 @@ export function searchQuestions(keyword, categoryId = null) {
   
   sql += ' ORDER BY q.id LIMIT 50';
   
-  const result = db.exec(sql, params);
+  const result = safeExec(sql, params);
   if (!result.length) return [];
   return result[0].values.map(row => ({
     id: row[0], category_id: row[1], question_type: row[2], stem: row[3],
@@ -493,11 +544,11 @@ export function searchQuestions(keyword, categoryId = null) {
 
 // ======= Category Progress =======
 export function getCategoryProgress(categoryId) {
-  const total = db.exec('SELECT COUNT(*) FROM questions WHERE category_id = ?', [categoryId])[0].values[0][0];
-  const attempted = db.exec(
+  const total = safeExec('SELECT COUNT(*) FROM questions WHERE category_id = ?', [categoryId])[0].values[0][0];
+  const attempted = safeExec(
     'SELECT COUNT(DISTINCT question_id) FROM study_records WHERE category_id = ?', [categoryId]
   )[0].values[0][0];
-  const correct = db.exec(
+  const correct = safeExec(
     `SELECT COUNT(DISTINCT question_id) FROM study_records 
      WHERE category_id = ? AND is_correct = 1 AND question_id NOT IN (
        SELECT question_id FROM study_records WHERE category_id = ? AND is_correct = 0
@@ -509,7 +560,7 @@ export function getCategoryProgress(categoryId) {
 
 // ======= 弱项诊断 =======
 export function getTagAnalysis() {
-  const result = db.exec(`
+  const result = safeExec(`
     SELECT q.tags,
       COUNT(sr.id) as total,
       SUM(CASE WHEN sr.is_correct = 1 THEN 1 ELSE 0 END) as correct
@@ -528,49 +579,71 @@ export function getTagAnalysis() {
 }
 
 export function getIndividualTagStats() {
-  const tags = new Set();
-  const allResult = db.exec("SELECT DISTINCT tags FROM questions WHERE tags != ''");
-  if (allResult.length) {
-    allResult[0].values.forEach(row => {
-      row[0].split(',').filter(Boolean).forEach(t => tags.add(t.trim()));
-    });
-  }
+  // Use a single GROUP BY query instead of N+1 pattern
+  const r = safeExec(`
+    SELECT 
+      TRIM(SUBSTR(tags, 1, INSTR(tags || ',', ',') - 1)) as tag,
+      COUNT(sr.id) as total,
+      SUM(CASE WHEN sr.is_correct = 1 THEN 1 ELSE 0 END) as correct
+    FROM questions q
+    JOIN study_records sr ON q.id = sr.question_id
+    WHERE q.tags != '' AND q.tags IS NOT NULL
+    GROUP BY tag
+    HAVING total > 2
+    ORDER BY total DESC
+    LIMIT 50
+  `);
   
-  const stats = [];
-  for (const tag of tags) {
-    const r = db.exec(`
-      SELECT COUNT(sr.id),
-        SUM(CASE WHEN sr.is_correct = 1 THEN 1 ELSE 0 END)
-      FROM study_records sr
-      JOIN questions q ON sr.question_id = q.id
-      WHERE q.tags LIKE ?
-    `, [`%${tag}%`]);
-    if (r.length && r[0].values.length) {
-      const total = r[0].values[0][0] || 0;
-      const correct = r[0].values[0][1] || 0;
-      if (total > 0) {
-        stats.push({
-          tag,
-          total,
-          correct,
-          rate: Math.round((correct / total) * 100)
-        });
+  if (!r.length || !r[0]?.values?.length) return [];
+  
+  // For multi-tag questions, also try LIKE-based aggregation for completeness
+  const tagResult = safeExec(
+    `SELECT q.tags,
+      COUNT(sr.id) as total,
+      SUM(CASE WHEN sr.is_correct = 1 THEN 1 ELSE 0 END) as correct
+    FROM study_records sr
+    JOIN questions q ON sr.question_id = q.id
+    WHERE q.tags != '' AND sr.is_correct = 0
+    GROUP BY q.tags
+    ORDER BY total DESC
+    LIMIT 20
+  `);
+  
+  // Aggregate individual tag statistics from multi-tag rows
+  const tagMap = {};
+  if (tagResult.length) {
+    for (const row of tagResult[0].values) {
+      const tags = row[0].split(',').filter(Boolean).map(t => t.trim());
+      for (const tag of tags) {
+        if (!tagMap[tag]) tagMap[tag] = { total: 0, correct: 0 };
+        tagMap[tag].total += row[1];
+        tagMap[tag].correct += row[2];
       }
     }
   }
+  
+  const stats = Object.entries(tagMap)
+    .filter(([_, v]) => v.total > 2)
+    .map(([tag, v]) => ({
+      tag,
+      total: v.total,
+      correct: v.correct,
+      rate: Math.round((v.correct / v.total) * 100)
+    }));
+  
   return stats.sort((a, b) => a.rate - b.rate);
 }
 
 // ======= 错题移除 =======
 export function markQuestionMastered(questionId) {
-  db.run('DELETE FROM study_records WHERE question_id = ?', [questionId]);
+  safeRun('DELETE FROM study_records WHERE question_id = ?', [questionId]);
 }
 
 // ======= 导出 =======
 export function exportCategoryToJSON(categoryId) {
-  const cat = db.exec('SELECT * FROM categories WHERE id = ?', [categoryId]);
+  const cat = safeExec('SELECT * FROM categories WHERE id = ?', [categoryId]);
   if (!cat.length || !cat[0].values.length) return null;
-  const qs = db.exec('SELECT * FROM questions WHERE category_id = ?', [categoryId]);
+  const qs = safeExec('SELECT * FROM questions WHERE category_id = ?', [categoryId]);
   if (!qs.length) return { category: cat[0].values[0], questions: [] };
   
   const headers = ['id', 'category_id', 'question_type', 'stem', 'option_a', 'option_b', 'option_c', 'option_d', 'answer', 'explanation', 'difficulty', 'tags', 'created_at'];
@@ -587,17 +660,17 @@ export function exportCategoryToJSON(categoryId) {
 }
 
 export function exportAllToJSON() {
-  const cats = db.exec('SELECT * FROM categories');
+  const cats = safeExec('SELECT * FROM categories');
   if (!cats.length) return [];
   return cats[0].values.map(row => ({
     id: row[0], name: row[1],
-    questionCount: db.exec('SELECT COUNT(*) FROM questions WHERE category_id = ?', [row[0]])[0].values[0][0]
+    questionCount: safeExec('SELECT COUNT(*) FROM questions WHERE category_id = ?', [row[0]])[0].values[0][0]
   }));
 }
 
 // ======= 题型统计 =======
 export function getQuestionTypeStats() {
-  const result = db.exec(`
+  const result = safeExec(`
     SELECT question_type, COUNT(*) as cnt FROM questions GROUP BY question_type
   `);
   if (!result.length) return [];
@@ -606,7 +679,7 @@ export function getQuestionTypeStats() {
 
 // ======= 连续学习天数 =======
 export function getStreak() {
-  const result = db.exec(`
+  const result = safeExec(`
     SELECT DISTINCT date(practiced_at) as day
     FROM study_records
     ORDER BY day DESC
@@ -632,7 +705,7 @@ export function getStreak() {
 
 // ======= 今日答题数 =======
 export function getTodayCount() {
-  const result = db.exec(
+  const result = safeExec(
     "SELECT COUNT(*) FROM study_records WHERE date(practiced_at) = date('now', 'localtime')"
   );
   return result[0].values[0][0];
@@ -653,7 +726,7 @@ export function getBookmarkedQuestions(categoryId = null) {
   }
   sql += ' ORDER BY b.created_at DESC';
   
-  const result = db.exec(sql, params);
+  const result = safeExec(sql, params);
   if (!result.length) return [];
   return result[0].values.map(row => ({
     ...mapQuestionRow(row.slice(0, 13)),
@@ -664,7 +737,7 @@ export function getBookmarkedQuestions(categoryId = null) {
 
 // ======= 标签和难度相关 =======
 export function getTagsByCategory(categoryId) {
-  const result = db.exec('SELECT DISTINCT tags FROM questions WHERE category_id = ? AND tags != ""', [categoryId]);
+  const result = safeExec('SELECT DISTINCT tags FROM questions WHERE category_id = ? AND tags != ""', [categoryId]);
   if (!result.length) return [];
   const tags = new Set();
   result[0].values.forEach(row => {
@@ -674,7 +747,7 @@ export function getTagsByCategory(categoryId) {
 }
 
 export function getAllTags() {
-  const result = db.exec('SELECT DISTINCT tags FROM questions WHERE tags != ""');
+  const result = safeExec('SELECT DISTINCT tags FROM questions WHERE tags != ""');
   if (!result.length) return [];
   const tags = new Set();
   result[0].values.forEach(row => {
@@ -697,7 +770,7 @@ export function getFilteredQuestions(categoryId, { tag, difficulty } = {}) {
   }
   
   sql += ' ORDER BY id';
-  const result = db.exec(sql, params);
+  const result = safeExec(sql, params);
   if (!result.length) return [];
   return result[0].values.map(mapQuestionRow);
 }
@@ -718,14 +791,14 @@ export function getFilteredRandomQuestions(categoryId, count, { tag, difficulty 
   sql += ' ORDER BY RANDOM() LIMIT ?';
   params.push(count);
   
-  const result = db.exec(sql, params);
+  const result = safeExec(sql, params);
   if (!result.length) return [];
   return result[0].values.map(mapQuestionRow);
 }
 
 // ======= 试题去重 =======
 export function detectDuplicates(categoryId) {
-  const result = db.exec(`
+  const result = safeExec(`
     SELECT stem, answer, COUNT(*) as cnt
     FROM questions WHERE category_id = ?
     GROUP BY stem, answer
@@ -736,7 +809,7 @@ export function detectDuplicates(categoryId) {
 }
 
 export function removeDuplicatesInCategory(categoryId) {
-  const dupes = db.exec(`
+  const dupes = safeExec(`
     SELECT stem, answer FROM questions WHERE category_id = ?
     GROUP BY stem, answer HAVING COUNT(*) > 1
   `, [categoryId]);
@@ -744,7 +817,7 @@ export function removeDuplicatesInCategory(categoryId) {
   
   let removed = 0;
   for (const [stem, answer] of dupes[0].values) {
-    const ids = db.exec(
+    const ids = safeExec(
       'SELECT id FROM questions WHERE category_id = ? AND stem = ? AND answer = ? ORDER BY id',
       [categoryId, stem, answer]
     );
@@ -752,7 +825,7 @@ export function removeDuplicatesInCategory(categoryId) {
       const keepId = ids[0].values[0][0];
       const toRemove = ids[0].values.slice(1).map(r => r[0]);
       for (const id of toRemove) {
-        db.run('DELETE FROM questions WHERE id = ?', [id]);
+        safeRun('DELETE FROM questions WHERE id = ?', [id]);
         removed++;
       }
     }
@@ -771,11 +844,217 @@ export function saveReminderPrefs(prefs) {
   localStorage.setItem('studyReminder', JSON.stringify(prefs));
 }
 
+// ======= 积分系统 =======
+const LEVELS = [
+  { name: '新手', min: 0, color: '#b0b0b6' },
+  { name: '学徒', min: 100, color: '#78b892' },
+  { name: '进阶', min: 300, color: '#6b9b7f' },
+  { name: '高手', min: 600, color: '#4a90d9' },
+  { name: '达人', min: 1000, color: '#d4a857' },
+  { name: '大师', min: 2000, color: '#d46a52' },
+  { name: '宗师', min: 4000, color: '#f2866e' },
+  { name: '传奇', min: 8000, color: '#c060d0' },
+]
+
+export function getXp() {
+  try { return parseInt(localStorage.getItem('totalXp') || '0') } catch { return 0 }
+}
+
+export function addXp(correct) {
+  const xp = getXp() + (correct ? 15 : 5)
+  localStorage.setItem('totalXp', String(xp))
+  return getLevelInfo(xp)
+}
+
+export function getLevelInfo(xp) {
+  if (!xp) xp = getXp()
+  let level = LEVELS[0], nextXp = LEVELS[1]?.min || 100
+  for (let i = LEVELS.length - 1; i >= 0; i--) {
+    if (xp >= LEVELS[i].min) { level = LEVELS[i]; nextXp = LEVELS[i + 1]?.min || (LEVELS[i].min * 2); break }
+  }
+  const pct = Math.min(100, Math.round(((xp - level.min) / (nextXp - level.min)) * 100))
+  return { level: level.name, color: level.color, xp, nextXp, pct }
+}
+
+// ======= 错因标签 =======
+export function markWrongReason(questionId, reason) {
+  safeRun('UPDATE study_records SET wrong_reason = ? WHERE question_id = ? AND is_correct = 0',
+    [reason, questionId]
+  );
+}
+
+export function getWrongQuestionsWithReason(categoryId = null) {
+  let sql = `
+    SELECT q.*, 
+      COUNT(sr.id) as wrong_count,
+      MAX(sr.practiced_at) as last_wrong_time,
+      GROUP_CONCAT(DISTINCT CASE WHEN sr.wrong_reason IS NOT NULL AND sr.wrong_reason != '' THEN sr.wrong_reason END) as reasons
+    FROM questions q
+    INNER JOIN study_records sr ON q.id = sr.question_id
+    WHERE sr.is_correct = 0
+  `;
+  const params = [];
+  if (categoryId) {
+    sql += ' AND q.category_id = ?';
+    params.push(categoryId);
+  }
+  sql += ' GROUP BY q.id ORDER BY wrong_count DESC, last_wrong_time DESC';
+  
+  const result = safeExec(sql, params);
+  if (!result.length) return [];
+  return result[0].values.map(row => ({
+    ...mapQuestionRow(row.slice(0, 13)),
+    wrong_count: row[13],
+    last_wrong_time: row[14],
+    reasons: row[15] ? row[15].split(',').filter(Boolean) : []
+  }));
+}
+
 // Reset all data
 export async function clearAllData() {
-  db.run('DELETE FROM study_records');
-  db.run('DELETE FROM bookmarks');
-  db.run('DELETE FROM questions');
-  db.run('DELETE FROM categories');
+  safeRun('DELETE FROM study_records');
+  safeRun('DELETE FROM bookmarks');
+  safeRun('DELETE FROM questions');
+  safeRun('DELETE FROM categories');
+  safeRun('DELETE FROM sessions');
+  safeRun('DELETE FROM session_items');
   await saveDatabase();
+}
+
+// ======= 练习/考试会话 =======
+export function saveSession({ type, categoryId, total, correct, timeSpent, score, items }) {
+  const result = safeExec(
+    'INSERT INTO sessions (type, category_id, total, correct, time_spent, score, finished_at) VALUES (?,?,?,?,?,?, datetime(\'now\',\'localtime\'))',
+    [type, categoryId || null, total, correct, timeSpent, score]
+  );
+  if (!result.length) return null;
+  const sessionId = result[0]?.values?.[0]?.[0];
+  if (sessionId && items) {
+    for (const item of items) {
+      safeRun('INSERT INTO session_items (session_id, question_id, is_correct, answer_given, time_spent) VALUES (?,?,?,?,?)',
+        [sessionId, item.questionId, item.isCorrect ? 1 : 0, item.answer || '', item.timeSpent || 0]);
+    }
+  }
+  saveDatabase().catch(() => {});
+  return sessionId;
+}
+
+export function getSessions(limit = 50) {
+  const result = safeExec(
+    'SELECT s.*, c.name as category_name FROM sessions s LEFT JOIN categories c ON s.category_id = c.id ORDER BY s.finished_at DESC LIMIT ?',
+    [limit]
+  );
+  if (!result.length) return [];
+  return result[0].values.map(row => ({
+    id: row[0], type: row[1], category_id: row[2], total: row[3],
+    correct: row[4], time_spent: row[5], score: row[6],
+    started_at: row[7], finished_at: row[8], category_name: row[9]
+  }));
+}
+
+export function getSessionDetail(sessionId) {
+  const session = safeExec('SELECT * FROM sessions WHERE id = ?', [sessionId]);
+  if (!session.length || !session[0].values.length) return null;
+  const s = session[0].values[0];
+  const items = safeExec(
+    'SELECT si.*, q.stem, q.answer FROM session_items si LEFT JOIN questions q ON si.question_id = q.id WHERE si.session_id = ?',
+    [sessionId]
+  );
+  return {
+    id: s[0], type: s[1], category_id: s[2], total: s[3],
+    correct: s[4], time_spent: s[5], score: s[6],
+    started_at: s[7], finished_at: s[8],
+    items: items.length ? items[0].values.map(row => ({
+      id: row[0], question_id: row[2], is_correct: row[3] === 1,
+      answer_given: row[4], time_spent: row[5],
+      question_text: row[6], answer: row[7]
+    })) : []
+  };
+}
+
+// ======= 数据备份恢复 =======
+export async function backupDatabase() {
+  await saveDatabase();
+  const data = await readOPFS();
+  if (!data) throw new Error('无法读取数据库');
+  const blob = new Blob([data], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `zetith-backup-${new Date().toISOString().slice(0, 10)}.db`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function restoreDatabase(file) {
+  const buffer = await file.arrayBuffer();
+  const data = new Uint8Array(buffer);
+  // Validate SQLite header
+  if (data.length < 100 || String.fromCharCode(...data.slice(0, 16)) !== 'SQLite format 3\u0000') {
+    throw new Error('无效的数据库文件');
+  }
+  await writeOPFS(data);
+  // Force reload to re-init
+  window.location.reload();
+}
+
+// ======= 题目编辑 =======
+export function updateQuestion(id, updates) {
+  const fields = [];
+  const params = [];
+  const map = {
+    stem: 'stem', option_a: 'option_a', option_b: 'option_b',
+    option_c: 'option_c', option_d: 'option_d', answer: 'answer',
+    explanation: 'explanation', difficulty: 'difficulty', tags: 'tags', category_id: 'category_id'
+  };
+  for (const [key, col] of Object.entries(map)) {
+    if (updates[key] !== undefined) {
+      fields.push(`${col} = ?`);
+      params.push(updates[key]);
+    }
+  }
+  if (!fields.length) return;
+  params.push(id);
+  safeRun(`UPDATE questions SET ${fields.join(', ')} WHERE id = ?`, params);
+  saveDatabase().catch(() => {});
+}
+
+export function addQuestion(data) {
+  safeRun(
+    'INSERT INTO questions (category_id, stem, option_a, option_b, option_c, option_d, answer, explanation, difficulty, tags) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    [data.category_id, data.stem, data.option_a || '', data.option_b || '',
+     data.option_c || '', data.option_d || '', data.answer, data.explanation || '',
+     data.difficulty || '适中', data.tags || '']
+  );
+  saveDatabase().catch(() => {});
+}
+
+export function deleteQuestion(id) {
+  safeRun('DELETE FROM questions WHERE id = ?', [id]);
+  saveDatabase().catch(() => {});
+}
+
+export function getQuestionsByDifficulty(categoryId, difficulty) {
+  const sql = 'SELECT * FROM questions WHERE category_id = ? AND difficulty = ?';
+  const result = safeExec(sql, [categoryId, difficulty]);
+  if (!result.length) return [];
+  return result[0].values.map(mapQuestionRow);
+}
+
+export function getDailyHeatmap(days = 365) {
+  const result = safeExec(
+    `SELECT date(practiced_at) as day, COUNT(*) as count FROM study_records WHERE practiced_at >= datetime('now', ? || ' days', 'localtime') GROUP BY day ORDER BY day`,
+    [`-${days}`]
+  );
+  if (!result.length) return [];
+  return result[0].values.map(row => ({ day: row[0], count: row[1] }));
+}
+
+// Dedicated COUNT query for learning days (much faster than fetching all rows)
+export function getLearningDaysCount(days = 365) {
+  const result = safeExec(
+    `SELECT COUNT(DISTINCT date(practiced_at)) FROM study_records WHERE practiced_at >= datetime('now', ? || ' days', 'localtime')`,
+    [`-${days}`]
+  );
+  return result[0]?.values?.[0]?.[0] || 0;
 }

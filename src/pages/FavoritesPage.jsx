@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { getBookmarkedQuestions, toggleBookmark } from '../db/database'
@@ -9,17 +9,19 @@ export default function FavoritesPage() {
   const { categories, persistAndRefresh } = useApp()
   const { addToast } = useToast()
 
-  const [filterCategoryId, setFilterCategoryId] = React.useState('')
+  const [filterCategoryId, setFilterCategoryId] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
   
   const bookmarks = useMemo(() => {
     try { return getBookmarkedQuestions(filterCategoryId ? +filterCategoryId : null) }
     catch { return [] }
-  }, [filterCategoryId])
+  }, [filterCategoryId, refreshKey])
 
   const handleRemove = (e, questionId) => {
     e.stopPropagation()
     toggleBookmark(questionId)
-    persistAndRefresh()
+    persistAndRefresh().catch(() => {})
+    setRefreshKey(k => k + 1)
     addToast('已取消收藏', 'info')
   }
 

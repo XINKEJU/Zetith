@@ -1,5 +1,5 @@
-// Simple service worker for app shell caching
-const CACHE_NAME = 'study-v1';
+// Service Worker — Stale-While-Revalidate strategy, tiku.db excluded
+const CACHE_VERSION = 'study-v2';
 const SHELL_FILES = [
   '/',
   '/manifest.json',
@@ -10,36 +10,51 @@ const SHELL_FILES = [
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL_FILES))
+    caches.open(CACHE_VERSION).then(cache => cache.addAll(SHELL_FILES))
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then(keys => 
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    caches.keys().then(keys =>
+      Promise.all(
+        keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k))
+      )
     )
   );
   self.clients.claim();
 });
 
 self.addEventListener('fetch', (e) => {
-  // Don't cache the large database file
+  if (!e.request.url.startsWith('http')) return;
   if (e.request.url.includes('tiku.db')) return;
+  if (e.request.url.includes('chrome-extension')) return;
 
-  // Don't cache HMR
-  if (e.request.url.includes('/@vite') || e.request.url.includes('/node_modules')) return;
+  // Only cache GET requests
+  if (e.request.method !== 'GET') return;
 
-  e.respondWith(
-    caches.match(e.request).then(cached => {
-      if (cached) return cached;
-      return fetch(e.request).then(response => {
-        if (!response || response.status !== 200) return response;
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-        return response;
-      }).catch(() => cached || new Response('Offline'));
-    })
-  );
+  // Stale-While-Revalidate for navigation and static assets
+  if (
+    e.request.mode === 'navigate' ||
+    e.request.destination === 'script' ||
+    e.request.destination === 'style' ||
+    e.request.destination === 'image' ||
+    e.request.destination === 'font' ||
+    e.request.destination === 'manifest'
+  ) {
+    e.respondWith(
+      caches.open(CACHE_VERSION).then(cache =>
+        cache.match(e.request).then(cached => {
+          const fetchPromise = fetch(e.request).then(response => {
+            if (response?.ok) {
+              cache.put(e.request, response.clone());
+            }
+            return response;
+          }).catch(() => cached);
+          return cached || fetchPromise;
+        })
+      )
+    );
+  }
 });

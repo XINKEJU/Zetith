@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { initDatabase, getAllCategories, getStudyStats, getWrongQuestions, saveDatabase } from '../db/database'
 
 const AppContext = createContext(null)
+const isDev = import.meta.env.DEV
 
 export function useApp() {
   return useContext(AppContext)
@@ -24,7 +25,7 @@ export function AppProvider({ children }) {
       const wrong = getWrongQuestions()
       setWrongCount(wrong.length)
     } catch (e) {
-      console.error('Refresh data error:', e)
+      if (isDev) console.error('Refresh data error:', e)
     }
   }, [dbReady])
 
@@ -42,7 +43,7 @@ export function AppProvider({ children }) {
         setDbReady(true)
       })
       .catch(err => {
-        console.error('Database init failed:', err)
+        if (isDev) console.error('Database init failed:', err)
         setInitMessage('初始化失败，请刷新页面重试')
       })
   }, [])

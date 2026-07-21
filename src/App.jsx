@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AppProvider } from './context/AppContext'
 import { ToastProvider } from './components/ToastProvider'
+import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
@@ -14,6 +15,8 @@ const StatsPage = lazy(() => import('./pages/StatsPage'))
 const ReviewPage = lazy(() => import('./pages/ReviewPage'))
 const FavoritesPage = lazy(() => import('./pages/FavoritesPage'))
 const CardStudyPage = lazy(() => import('./pages/CardStudyPage'))
+const DailyPage = lazy(() => import('./pages/DailyPage'))
+const HistoryPage = lazy(() => import('./pages/HistoryPage'))
 
 function PageLoader() {
   return (
@@ -31,6 +34,7 @@ export default function App() {
   return (
     <AppProvider>
       <ToastProvider>
+      <ErrorBoundary>
       <Layout>
         <Suspense fallback={<PageLoader />}>
         <Routes>
@@ -38,16 +42,19 @@ export default function App() {
           <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/study/:categoryId" element={<StudyPage />} />
           <Route path="/cards" element={<CardStudyPage />} />
+          <Route path="/daily" element={<DailyPage />} />
           <Route path="/practice" element={<PracticePage />} />
           <Route path="/exam" element={<ExamPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/wrongbook" element={<WrongBookPage />} />
           <Route path="/favorites" element={<FavoritesPage />} />
+          <Route path="/history" element={<HistoryPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </Suspense>
       </Layout>
+      </ErrorBoundary>
       </ToastProvider>
     </AppProvider>
   )

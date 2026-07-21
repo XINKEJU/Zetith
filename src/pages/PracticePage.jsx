@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { saveStudyRecord, getFilteredRandomQuestions, getAllTags } from '../db/database'
+import { saveStudyRecord, getFilteredRandomQuestions, getAllTags, saveSession } from '../db/database'
 import { prepareQuestionForDisplay, checkAnswer } from '../services/studyService'
+import { playCorrect, playIncorrect, playComplete } from '../services/soundService'
 
 export default function PracticePage() {
   const navigate = useNavigate()
@@ -13,6 +14,9 @@ export default function PracticePage() {
   const [optionShuffle, setOptionShuffle] = useState(true)
   const [filterTag, setFilterTag] = useState('')
   const [filterDifficulty, setFilterDifficulty] = useState('')
+  const [filterType, setFilterType] = useState('')
+  const [perQuestionTimer, setPerQuestionTimer] = useState(false)
+  const [timePerQ, setTimePerQ] = useState(60)
 
   const [phase, setPhase] = useState('setup')
   const [questions, setQuestions] = useState([])
@@ -22,7 +26,9 @@ export default function PracticePage() {
   const [done, setDone] = useState(false)
   const [result, setResult] = useState(null)
   const [results, setResults] = useState([])
-  const startedAt = React.useRef(null)
+  const [qTimeLeft, setQTimeLeft] = useState(0)
+  const timerRef = useRef(null)
+  const startedAt = useRef(null)
 
   const begin = () => {
     if (!selectedCategoryId) return
@@ -31,36 +37,67 @@ export default function PracticePage() {
       difficulty: filterDifficulty || undefined
     })
     if (!qs.length) return
-    const ds = qs.map(q => prepareQuestionForDisplay(q, optionShuffle))
-    setQuestions(qs)
+    // Apply type filter
+    let filtered = qs
+    if (filterType) {
+      filtered = qs.filter(q => q.question_type === filterType)
+      if (!filtered.length) return
+    }
+    const ds = filtered.map(q => prepareQuestionForDisplay(q, optionShuffle))
+    setQuestions(filtered)
     setDisplays(ds)
     setIndex(0)
     setOption(null)
     setDone(false)
     setResult(null)
     setResults([])
+    if (perQuestionTimer) { setQTimeLeft(timePerQ); startTimer(timePerQ) }
     startedAt.current = Date.now()
     setPhase('practice')
   }
 
-  const submit = () => {
+  const startTimer = (sec) => {
+    clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => {
+      setQTimeLeft(t => {
+        if (t <= 1) { clearInterval(timerRef.current); return 0 }
+        return t - 1
+      })
+    }, 1000)
+  }
+
+  const submit = useCallback(() => {
     if (option === null) return
     const r = checkAnswer(questions[index], option, displays[index].shuffleMap)
     setResult(r)
     setDone(true)
     saveStudyRecord(questions[index].id, questions[index].category_id, r.isCorrect, r.userAnswer, 0)
     setResults(prev => [...prev, { correct: r.isCorrect }])
-  }
+    r.isCorrect ? playCorrect() : playIncorrect()
+  }, [option, questions, index, displays])
+
+  useEffect(() => {
+    if (qTimeLeft === 0 && phase === 'practice' && perQuestionTimer && !done && questions.length > 0) {
+      submit()
+    }
+  }, [qTimeLeft, phase, perQuestionTimer, done, questions.length, submit])
+
+  useEffect(() => () => clearInterval(timerRef.current), [])
 
   const next = () => {
+    clearInterval(timerRef.current)
     if (index + 1 >= questions.length) {
       setPhase('finished')
-      persistAndRefresh()
+      const elapsed = Math.round((Date.now() - startedAt.current) / 1000)
+      saveSession({ type: 'practice', categoryId: selectedCategoryId ? +selectedCategoryId : null, total: questions.length, correct, timeSpent: elapsed, score: questions.length > 0 ? Math.round((correct / questions.length) * 100) : 0, items: results.map((r, i) => ({ questionId: questions[i]?.id, isCorrect: r.correct })) })
+      playComplete()
+      persistAndRefresh().catch(() => {})
     } else {
       setIndex(i => i + 1)
       setOption(null)
       setDone(false)
       setResult(null)
+      if (perQuestionTimer) { setQTimeLeft(timePerQ); startTimer(timePerQ) }
     }
   }
 
@@ -89,20 +126,49 @@ export default function PracticePage() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div className="form-group">
+              <label>题型筛选</label>
+              <select value={filterType} onChange={e => setFilterType(e.target.value)}>
+                <option value="">全部题型</option>
+                <option value="单选题">单选题</option>
+                <option value="多选题">多选题</option>
+                <option value="判断题">判断题</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>单题倒计时</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input type="checkbox" checked={perQuestionTimer}
+                  onChange={e => setPerQuestionTimer(e.target.checked)} />
+                <span style={{ fontSize: '14px' }}>开启</span>
+                {perQuestionTimer && (
+                  <select value={timePerQ} onChange={e => setTimePerQ(+e.target.value)}
+                    style={{ width: 'auto', padding: '6px 10px' }}>
+                    {[30, 45, 60, 90, 120].map(s => (
+                      <option key={s} value={s}>{s} 秒</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="form-group">
+              <label>难度筛选</label>
+              <select value={filterDifficulty} onChange={e => setFilterDifficulty(e.target.value)}>
+                <option value="">全部难度</option>
+                <option value="易">易</option>
+                <option value="偏易">偏易</option>
+                <option value="适中">适中</option>
+                <option value="偏难">偏难</option>
+                <option value="难">难</option>
+              </select>
+            </div>
+            <div className="form-group">
               <label>标签筛选</label>
               <select value={filterTag} onChange={e => setFilterTag(e.target.value)}>
                 <option value="">全部</option>
                 {selectedCategoryId && getAllTags().map(t => (
                   <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>难度筛选</label>
-              <select value={filterDifficulty} onChange={e => setFilterDifficulty(e.target.value)}>
-                <option value="">全部</option>
-                {['易','偏易','适中','偏难','难'].map(d => (
-                  <option key={d} value={d}>{d}</option>
                 ))}
               </select>
             </div>
@@ -182,6 +248,11 @@ export default function PracticePage() {
       </div>
       <div className="progress-info">
         <span>{index + 1} / {questions.length} 题</span>
+        {perQuestionTimer && (
+          <span style={{ color: qTimeLeft <= 10 ? 'var(--danger)' : 'var(--text-muted)', fontWeight: qTimeLeft <= 10 ? 600 : 400 }}>
+            ⏱ {qTimeLeft}s
+          </span>
+        )}
         <span>正确 {correct} 题</span>
       </div>
 

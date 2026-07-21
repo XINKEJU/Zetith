@@ -1,13 +1,10 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useToast } from '../components/ToastProvider'
 import { importFromFiles, parseExcelFile } from '../services/importService'
-import { deleteCategory } from '../db/database'
-import { getCategoryProgress } from '../db/database'
-import { clearAllData } from '../db/database'
-import { removeDuplicatesInCategory } from '../db/database'
-import { exportAllToJSON, exportCategoryToJSON } from '../db/database'
+import { deleteCategory, getCategoryProgress, clearAllData, removeDuplicatesInCategory, exportAllToJSON, exportCategoryToJSON, backupDatabase, restoreDatabase } from '../db/database'
+import { exportCategoryToDocx } from '../services/exportService'
 
 export default function CategoriesPage() {
   const navigate = useNavigate()
@@ -20,6 +17,14 @@ export default function CategoriesPage() {
   const [importResults, setImportResults] = useState(null)
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef(null)
+
+  const categoryProgress = useMemo(() => {
+    const progress = {}
+    for (const cat of categories) {
+      try { progress[cat.id] = getCategoryProgress(cat.id) } catch { progress[cat.id] = { total: 0, attempted: 0, correct: 0 } }
+    }
+    return progress
+  }, [categories])
 
   const handleImport = async (files) => {
     if (files.length === 0) return
@@ -53,7 +58,7 @@ export default function CategoriesPage() {
     try {
       const result = await importFromFiles(previewFiles)
       setImportResults(result)
-      await persistAndRefresh()
+      await persistAndRefresh().catch(() => {})
       addToast(`成功导入 ${result.totalImported} 道题目`, 'success')
     } catch (err) {
       setImportResults({ error: err.message })
@@ -122,7 +127,7 @@ export default function CategoriesPage() {
             <button className="btn btn-outline" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={async () => {
               const ok = await confirm('确定要清空所有题库和学习记录吗？此操作不可撤销。', '清空全部数据')
               if (ok) {
-                clearAllData().then(() => persistAndRefresh())
+                clearAllData().then(() => persistAndRefresh().catch(() => {}))
               }
             }}>
               清空
@@ -130,7 +135,15 @@ export default function CategoriesPage() {
           )}
           {categories.length > 0 && (<>
           <button className="btn btn-outline" onClick={handleExportAll}>
-            导出
+            导出 JSON
+          </button>
+          <button className="btn btn-outline" onClick={() => {
+            if (categories.length === 0) return
+            const catId = prompt('输入要导出 Word 的题库 ID（可查看下方卡片）:', categories[0]?.id)
+            const numId = parseInt(catId)
+            if (!isNaN(numId) && numId > 0) exportCategoryToDocx(numId).then(() => addToast('Word 导出成功', 'success'))
+          }}>
+            导出 Word
           </button>
           <button className="btn btn-outline" onClick={async () => {
             const ok = await confirm('将检测并移除所有题库中的重复题目（保留最早的一条）。确定继续？', '试题去重')
@@ -139,12 +152,30 @@ export default function CategoriesPage() {
               for (const cat of categories) {
                 totalRemoved += removeDuplicatesInCategory(cat.id)
               }
-              persistAndRefresh()
+              persistAndRefresh().catch(() => {})
               addToast(`已移除 ${totalRemoved} 道重复题目`, 'success')
             }
           }}>
             去重
           </button>
+          <button className="btn btn-outline" onClick={() => backupDatabase().catch(e => addToast('备份失败: ' + e.message, 'error'))}>
+            备份数据
+          </button>
+          <label className="btn btn-outline" style={{ cursor: 'pointer' }}>
+            恢复数据
+            <input type="file" accept=".db" style={{ display: 'none' }}
+              onChange={async (e) => {
+                const file = e.target.files[0]
+                if (!file) return
+                const ok = await confirm('恢复数据将覆盖当前所有内容，确定继续？', '恢复数据')
+                if (ok) {
+                  try { await restoreDatabase(file) }
+                  catch (err) { addToast('恢复失败: ' + err.message, 'error') }
+                }
+                e.target.value = ''
+              }}
+            />
+          </label>
           </>)}
           <button className="btn btn-outline" onClick={downloadTemplate}>
             下载模板
@@ -171,7 +202,7 @@ export default function CategoriesPage() {
       ) : (
         <div className="card-grid">
           {categories.map(cat => {
-            const progress = getCategoryProgress(cat.id)
+            const progress = categoryProgress[cat.id]
             const pct = progress.total > 0 ? Math.round((progress.attempted / progress.total) * 100) : 0
             const correctPct = progress.attempted > 0 ? Math.round((progress.correct / progress.attempted) * 100) : 0
             return (
@@ -187,7 +218,7 @@ export default function CategoriesPage() {
                   const ok = await confirm(`确定要删除题库"${cat.name}"吗？所有题目和学习记录将被清空。`, '删除题库')
                   if (ok) {
                     deleteCategory(cat.id)
-                    persistAndRefresh()
+                    persistAndRefresh().catch(() => {})
                   }
                 }}
                 title="删除题库"

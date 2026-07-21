@@ -4,27 +4,111 @@ import { Bar, Doughnut } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, BarElement, ArcElement,
-  Title, Tooltip, Legend, PointElement, LineElement,
+  Title, Tooltip, Legend
 } from 'chart.js'
 import { useApp } from '../context/AppContext'
-import { getDailyStats, getReviewStats, getIndividualTagStats, getQuestionTypeStats } from '../db/database'
+import { getDailyStats, getIndividualTagStats, getQuestionTypeStats, getCategoryProgress, getDailyHeatmap, getLearningDaysCount } from '../db/database'
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, ArcElement,
-  Title, Tooltip, Legend, PointElement, LineElement
+  Title, Tooltip, Legend
 )
+
+function Heatmap({ data }) {
+  const today = new Date()
+  const months = []
+  for (let m = 0; m < 7; m++) {
+    const d = new Date(today.getFullYear(), today.getMonth() - m, 1)
+    months.unshift({ year: d.getFullYear(), month: d.getMonth() })
+  }
+  const dayMap = {}
+  data.forEach(d => { dayMap[d.day] = d.count })
+
+  const maxCount = Math.max(1, ...data.map(d => d.count))
+  const getColor = (count) => {
+    if (!count) return 'var(--border-light)'
+    const pct = count / maxCount
+    if (pct > 0.7) return 'var(--accent)'
+    if (pct > 0.4) return 'var(--accent-dark)'
+    return 'var(--accent-light)'
+  }
+
+  const dayNames = ['一', '二', '三', '四', '五', '六', '日']
+
+  return (
+    <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginRight: '4px', paddingTop: '18px' }}>
+        {dayNames.map((d, i) => (
+          <div key={i} style={{ fontSize: '10px', color: 'var(--text-muted)', height: '12px', lineHeight: '12px', textAlign: 'right' }}>
+            {i % 2 === 0 ? d : ''}
+          </div>
+        ))}
+      </div>
+      {months.map(({ year, month }) => {
+        const daysInMonth = new Date(year, month + 1, 0).getDate()
+        const firstDay = new Date(year, month, 1).getDay()
+        const offset = firstDay === 0 ? 6 : firstDay - 1
+        const weeks = Math.ceil((daysInMonth + offset) / 7)
+        return (
+          <div key={`${year}-${month}`}>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '6px', textAlign: 'center' }}>
+              {month + 1}月
+            </div>
+            <div style={{ display: 'grid', gridTemplateRows: `repeat(7, 12px)`, gridAutoFlow: 'column', gap: '3px' }}>
+              {Array.from({ length: offset }, (_, i) => (
+                <div key={`e${i}`} style={{ width: '12px', height: '12px', borderRadius: '3px' }} />
+              ))}
+              {Array.from({ length: daysInMonth }, (_, i) => {
+                const day = i + 1
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                const count = dayMap[dateStr] || 0
+                return (
+                  <div key={day}
+                    style={{
+                      width: '12px', height: '12px', borderRadius: '3px',
+                      background: getColor(count),
+                      cursor: 'pointer'
+                    }}
+                    title={`${dateStr}: ${count} 题`}
+                  />
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+      <div style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'flex', alignItems: 'flex-end', gap: '4px', paddingBottom: '2px' }}>
+        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: 'var(--border-light)' }} />
+        <span>少</span>
+        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: 'var(--accent)' }} />
+        <span>多</span>
+      </div>
+    </div>
+  )
+}
 
 export default function StatsPage() {
   const navigate = useNavigate()
   const { categories, stats } = useApp()
 
   const dailyStats = useMemo(() => { try { return getDailyStats(14) } catch { return [] } }, [stats])
-  const reviewStats = useMemo(() => { try { return getReviewStats() } catch { return { total: 0, due: 0, mastered: 0 } } }, [stats])
   const tagStats = useMemo(() => { try { return getIndividualTagStats() } catch { return [] } }, [stats])
   const typeStats = useMemo(() => { try { return getQuestionTypeStats() } catch { return [] } }, [stats])
 
   const totalQuestions = useMemo(() => categories.reduce((s, c) => s + c.question_count, 0), [categories])
-  const learningDays = useMemo(() => { try { return getDailyStats(365).length } catch { return 0 } }, [stats])
+  const learningDays = useMemo(() => { try { return getLearningDaysCount(365) } catch { return 0 } }, [stats])
+
+  const categoryProgress = useMemo(() => {
+    const progress = {}
+    for (const cat of categories) {
+      try { progress[cat.id] = getCategoryProgress(cat.id) } catch { progress[cat.id] = { total: 0, attempted: 0, correct: 0 } }
+    }
+    return progress
+  }, [categories, stats])
+
+  const heatmapData = useMemo(() => {
+    try { return getDailyHeatmap(210) } catch { return [] }
+  }, [stats])
 
   const dailyChartData = {
     labels: dailyStats.map(d => d.day.slice(5)),
@@ -154,6 +238,12 @@ export default function StatsPage() {
         </div>
       )}
 
+      {/* 学习热力图 */}
+      <div className="card" style={{ marginBottom: '18px' }}>
+        <h3 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '14px' }}>学习热力图</h3>
+        <Heatmap data={heatmapData} />
+      </div>
+
       {/* 题库概览 */}
       <div className="card" style={{ marginBottom: '0' }}>
         <h3 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '14px' }}>题库总览</h3>
@@ -166,15 +256,17 @@ export default function StatsPage() {
           </thead>
           <tbody>
             {categories.slice(0, 20).map(cat => {
-              const attempted = Math.min(cat.question_count, Math.floor(Math.random() * 0 + /* placeholder */ 0))
+              const prog = categoryProgress[cat.id] || { total: 0, attempted: 0, correct: 0 }
+              const attempted = prog.attempted
+              const pct = cat.question_count > 0 ? Math.round((attempted / cat.question_count) * 100) : 0
               return (
                 <tr key={cat.id}>
                   <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '280px' }}>
                     {cat.name}
                   </td>
                   <td style={{ textAlign: 'right' }}>{cat.question_count}</td>
-                  <td style={{ textAlign: 'right', color: 'var(--text-light)' }}>-</td>
-                  <td style={{ textAlign: 'right', color: 'var(--text-light)' }}>-</td>
+                  <td style={{ textAlign: 'right' }}>{attempted || '-'}</td>
+                  <td style={{ textAlign: 'right' }}>{cat.question_count > 0 ? `${pct}%` : '-'}</td>
                 </tr>
               )
             })}

@@ -16,15 +16,18 @@ export default function SearchModal({ onClose }) {
   useEffect(() => {
     if (query.trim().length < 1) {
       setResults([])
+      setSearching(false)
       return
     }
+    setSearching(true)
     const timer = setTimeout(() => {
       try {
         const r = searchQuestions(query)
         setResults(r)
       } catch { setResults([]) }
+      setSearching(false)
     }, 200)
-    return () => clearTimeout(timer)
+    return () => { clearTimeout(timer); setSearching(false) }
   }, [query])
 
   const handleSelect = (q) => {
@@ -42,6 +45,7 @@ export default function SearchModal({ onClose }) {
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="搜索题目关键词..."
+            aria-label="搜索题目"
             style={{
               flex: 1, border: 'none', outline: 'none',
               fontSize: '16px', background: 'transparent',
@@ -49,7 +53,7 @@ export default function SearchModal({ onClose }) {
             }}
             onKeyDown={e => { if (e.key === 'Escape') onClose() }}
           />
-          <button className="btn btn-outline" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={onClose}>
+          <button className="btn btn-outline" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={onClose} aria-label="关闭搜索">
             Esc
           </button>
         </div>

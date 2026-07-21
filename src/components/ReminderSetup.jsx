@@ -26,7 +26,7 @@ export default function ReminderSetup({ onClose }) {
       addToast('学习提醒已关闭', 'info')
     }
     onClose?.()
-  }, [enabled, time])
+  }, [enabled, time, addToast, onClose])
 
   return (
     <div className="modal-overlay" onClick={onClose}>

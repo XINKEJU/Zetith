@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { getQuestionsByCategory, getCategoryById, toggleBookmark, isBookmarked, getFilteredQuestions, getAllTags } from '../db/database'
+import { getCategoryById, toggleBookmark, isBookmarked, getFilteredQuestions, getTagsByCategory } from '../db/database'
 import { shuffleArray } from '../services/studyService'
 
 export default function CardStudyPage() {
@@ -21,7 +21,7 @@ export default function CardStudyPage() {
   
   const tags = useMemo(() => {
     if (!selectedCategoryId) return []
-    try { return getAllTags(selectedCategoryId) } catch { return [] }
+    try { return getTagsByCategory(parseInt(selectedCategoryId)) } catch { return [] }
   }, [selectedCategoryId])
 
   const begin = () => {
@@ -53,15 +53,18 @@ export default function CardStudyPage() {
     if (q) { toggleBookmark(q.id); setBookmarked(b => !b) }
   }
 
+  const handlersRef = React.useRef({ handleFlip, handlePrev, handleNext })
+  handlersRef.current = { handleFlip, handlePrev, handleNext }
+
   useEffect(() => {
     const h = (e) => {
-      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleFlip() }
-      if (e.key === 'ArrowLeft') handlePrev()
-      if (e.key === 'ArrowRight') handleNext()
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handlersRef.current.handleFlip() }
+      if (e.key === 'ArrowLeft') handlersRef.current.handlePrev()
+      if (e.key === 'ArrowRight') handlersRef.current.handleNext()
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [index, flipped, questions.length])
+  }, [])
 
   if (!started) {
     return (

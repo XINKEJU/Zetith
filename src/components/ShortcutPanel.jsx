@@ -1,32 +1,37 @@
 import React from 'react'
 
 const shortcuts = [
-  { keys: ['⌘', '1-7'], desc: 'Navigate pages' },
-  { keys: ['⌘', 'K'], desc: 'Search questions' },
-  { keys: ['⌘', 'T'], desc: 'Toggle dark mode' },
-  { keys: ['?'], desc: 'Show shortcuts' },
-  { keys: ['←', '→'], desc: 'Previous / Next question' },
-  { keys: ['Space'], desc: 'Show / Hide answer' },
+  { keys: ['⌘', '1-9,0'], desc: '页面导航' },
+  { keys: ['⌘', 'K'], desc: '搜索题目' },
+  { keys: ['⌘', 'T'], desc: '切换深色/浅色模式' },
+  { keys: ['⌘', 'R'], desc: '学习提醒' },
+  { keys: ['⌘', 'H'], desc: '练习历史' },
+  { keys: ['?'], desc: '显示快捷键面板' },
+  { keys: ['←', '→'], desc: '上一题 / 下一题' },
+  { keys: ['Space'], desc: '显示 / 隐藏答案' },
 ]
 
 const pages = [
-  { key: '⌘1', desc: 'Home' },
-  { key: '⌘2', desc: 'Question Banks' },
-  { key: '⌘3', desc: 'Practice' },
-  { key: '⌘4', desc: 'Mock Exam' },
-  { key: '⌘5', desc: 'Smart Review' },
-  { key: '⌘6', desc: 'Wrong Book' },
-  { key: '⌘7', desc: 'Statistics' },
+  { key: '⌘1', desc: '首页' },
+  { key: '⌘2', desc: '每日一练' },
+  { key: '⌘3', desc: '题库管理' },
+  { key: '⌘4', desc: '答题练习' },
+  { key: '⌘5', desc: '背题模式' },
+  { key: '⌘6', desc: '模拟考试' },
+  { key: '⌘7', desc: '智能复习' },
+  { key: '⌘8', desc: '错题本' },
+  { key: '⌘9', desc: '收藏夹' },
+  { key: '⌘0', desc: '学习统计' },
 ]
 
 export default function ShortcutPanel({ onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
-        <h2 style={{ marginBottom: '20px' }}>Keyboard Shortcuts</h2>
+        <h2 style={{ marginBottom: '20px' }}>键盘快捷键</h2>
         
         <div style={{ marginBottom: '20px' }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)', marginBottom: '8px' }}>Navigation</div>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)', marginBottom: '8px' }}>页面导航</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {pages.map(s => (
               <div key={s.key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
@@ -38,7 +43,7 @@ export default function ShortcutPanel({ onClose }) {
         </div>
 
         <div style={{ marginBottom: '8px' }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)', marginBottom: '8px' }}>Actions</div>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)', marginBottom: '8px' }}>操作</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {shortcuts.map(s => (
               <div key={s.desc} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>

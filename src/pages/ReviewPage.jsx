@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { getDueReviewQuestions, setReviewState, addToReviewQueue, getReviewStats, saveStudyRecord, getWrongQuestions } from '../db/database'
@@ -28,6 +28,9 @@ export default function ReviewPage() {
   const [results, setResults] = useState([]) // { isCorrect, quality }
   const [filterCategory, setFilterCategory] = useState('')
   const [stats, setStats] = useState({ total: 0, due: 0, mastered: 0 })
+  const timeoutRef = useRef(null)
+
+  useEffect(() => () => clearTimeout(timeoutRef.current), [])
 
   const loadQuestions = () => {
     const catId = filterCategory ? parseInt(filterCategory) : null
@@ -96,10 +99,9 @@ export default function ReviewPage() {
     setRated(true)
 
     if (currentIndex >= questions.length - 1) {
-      setRated(quality)
-      setTimeout(() => {
+      timeoutRef.current = setTimeout(() => {
         setFinished(true)
-        persistAndRefresh()
+        persistAndRefresh().catch(() => {})
       }, 500)
     }
   }
@@ -114,7 +116,7 @@ export default function ReviewPage() {
       setRated(false)
     } else {
       setFinished(true)
-      persistAndRefresh()
+      persistAndRefresh().catch(() => {})
     }
   }
 
@@ -278,10 +280,10 @@ export default function ReviewPage() {
 
           <div className="action-bar" style={{ marginTop: '24px' }}>
             <button className="btn btn-primary" onClick={loadQuestions}>
-              Continue
+              继续复习
             </button>
             <button className="btn btn-outline" onClick={() => navigate('/')}>
-              Home
+              返回首页
             </button>
           </div>
         </div>
@@ -331,7 +333,7 @@ export default function ReviewPage() {
               你还有 {wrongCount} 道错题没有加入复习计划
             </p>
             <button className="btn btn-primary" onClick={handleAddWrongToReview}>
-              Add to Review
+              加入复习计划
             </button>
           </div>
         )}

@@ -195,9 +195,48 @@ export default function Layout({ children }) {
           <div className="page-enter">{children}</div>
         )}
       </main>
+
+      {/* 移动端底部导航栏 */}
+      {dbReady && <MobileNav location={location.pathname} navigate={navigate} wrongCount={wrongCount} onSearch={() => setShowSearch(true)} />}
+
       {showSearch && <SearchModal onClose={() => setShowSearch(false)} />}
       {showShortcuts && <ShortcutPanel onClose={() => setShowShortcuts(false)} />}
       {showReminder && <ReminderSetup onClose={() => setShowReminder(false)} />}
     </div>
+  )
+}
+
+const mobileNavItems = [
+  { path: '/', label: '首页', emoji: '🏠' },
+  { path: '/practice', label: '练习', emoji: '✏️' },
+  { path: '/review', label: '复习', emoji: '🧠' },
+  { path: '/wrongbook', label: '错题', emoji: '📝' },
+  { path: '/stats', label: '统计', emoji: '📊' },
+]
+
+function MobileNav({ location, navigate, wrongCount, onSearch }) {
+  return (
+    <nav className="mobile-nav">
+      {mobileNavItems.map(item => {
+        const active = location === item.path || (item.path === '/categories' && location.startsWith('/study/'))
+        return (
+          <button
+            key={item.path}
+            className={`mobile-nav-item ${active ? 'active' : ''}`}
+            onClick={() => navigate(item.path)}
+          >
+            <span className="mobile-nav-emoji">{item.emoji}</span>
+            <span className="mobile-nav-label">{item.label}</span>
+            {item.path === '/wrongbook' && wrongCount > 0 && (
+              <span className="mobile-nav-badge">{wrongCount}</span>
+            )}
+          </button>
+        )
+      })}
+      <button className="mobile-nav-item" onClick={onSearch}>
+        <span className="mobile-nav-emoji">🔍</span>
+        <span className="mobile-nav-label">搜索</span>
+      </button>
+    </nav>
   )
 }

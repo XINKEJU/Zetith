@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getQuestionsByCategory, getCategoryById, toggleBookmark, isBookmarked, getNote, saveNote } from '../db/database'
 import { shuffleArray, prepareQuestionForDisplay } from '../services/studyService'
@@ -98,6 +98,17 @@ export default function StudyPage() {
     }
   }, [currentIndex, questions.length])
 
+  // Swipe gesture for mobile
+  const touchStartX = useRef(0)
+  const handleTouchStart = useCallback((e) => { touchStartX.current = e.touches[0].clientX }, [])
+  const handleTouchEnd = useCallback((e) => {
+    const diff = touchStartX.current - e.changedTouches[0].clientX
+    if (Math.abs(diff) > 60) {
+      if (diff > 0) handleNext()
+      else handlePrev()
+    }
+  }, [currentIndex, questions.length])
+
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -137,7 +148,7 @@ export default function StudyPage() {
             />
           </div>
 
-          <div className="question-card">
+          <div className="question-card" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
             <div className="question-meta" style={{ justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <span className="question-badge badge-type">{displayQuestion.question_type}</span>
@@ -222,6 +233,7 @@ export default function StudyPage() {
               </div>
             )}
           </div>
+          <div className="swipe-hint">← 左滑下一题 · 右滑上一题 →</div>
         </>
       )}
     </div>

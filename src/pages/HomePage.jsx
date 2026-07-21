@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { getStreak, getTodayCount, getLevelInfo } from '../db/database'
+import Confetti from '../components/Confetti'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -27,6 +28,11 @@ export default function HomePage() {
   const goalPct = Math.min(100, Math.round((todayCount / dailyGoal) * 100))
   const goalDone = todayCount >= dailyGoal
 
+  const [showConfetti, setShowConfetti] = useState(false)
+  useEffect(() => {
+    if (goalDone && !showConfetti) setShowConfetti(true)
+  }, [goalDone])
+
   // Find categories with recent activity (based on updated_at)
   const recentCategories = useMemo(() => {
     return categories.filter(c => c.question_count > 0).slice(0, 6)
@@ -47,6 +53,7 @@ export default function HomePage() {
 
   return (
     <div>
+      <Confetti active={showConfetti} />
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1>学习仪表盘</h1>

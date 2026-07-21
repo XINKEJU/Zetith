@@ -5,6 +5,30 @@ let SQL = null;
 
 const isDev = import.meta.env.DEV;
 
+// Electron 环境（由 preload 注入 window.electronDB）走 Node fs 持久化；
+// 其它环境（浏览器/PWA）走 OPFS。两者对外接口一致：read/write 一个 Uint8Array。
+const hasElectronDB = typeof window !== 'undefined' && !!window.electronDB;
+
+async function readStoredDB() {
+  if (hasElectronDB) {
+    try {
+      const data = await window.electronDB.readFile('tiku.db');
+      return data ? new Uint8Array(data) : null;
+    } catch {
+      return null;
+    }
+  }
+  return readOPFS();
+}
+
+async function writeStoredDB(data) {
+  if (hasElectronDB) {
+    await window.electronDB.writeFile('tiku.db', data);
+    return;
+  }
+  await writeOPFS(data.buffer);
+}
+
 // Safe exec helper
 function safeExec(sql, params = []) {
   if (!db) return [];
@@ -74,7 +98,7 @@ async function loadPrebuiltDB(SQL, onProgress) {
       offset += chunk.length;
     }
     
-    await writeOPFS(buffer);
+    await writeStoredDB(buffer);
     return new SQL.Database(buffer);
   } catch {
     return null;
@@ -88,7 +112,7 @@ export async function initDatabase(onProgress) {
     locateFile: (file) => `/sql-wasm.wasm`
   });
 
-  const existing = await readOPFS();
+  const existing = await readStoredDB();
   if (existing) {
     db = new SQL.Database(existing);
   } else {
@@ -207,7 +231,7 @@ export async function initDatabase(onProgress) {
 export async function saveDatabase() {
   if (!db) return;
   const data = db.export();
-  await writeOPFS(data.buffer);
+  await writeStoredDB(data);
 }
 
 export function getDatabase() {
@@ -975,7 +999,7 @@ export function getSessionDetail(sessionId) {
 // ======= 数据备份恢复 =======
 export async function backupDatabase() {
   await saveDatabase();
-  const data = await readOPFS();
+  const data = await readStoredDB();
   if (!data) throw new Error('无法读取数据库');
   const blob = new Blob([data], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
@@ -993,7 +1017,7 @@ export async function restoreDatabase(file) {
   if (data.length < 100 || String.fromCharCode(...data.slice(0, 16)) !== 'SQLite format 3\u0000') {
     throw new Error('无效的数据库文件');
   }
-  await writeOPFS(data);
+  await writeStoredDB(data);
   // Force reload to re-init
   window.location.reload();
 }

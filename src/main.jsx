@@ -10,7 +10,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </BrowserRouter>
 )
 
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !window.electronDB) {
   navigator.serviceWorker.register('/sw.js').catch(() => {})
 }
 

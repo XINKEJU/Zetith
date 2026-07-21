@@ -1,0 +1,21 @@
+{
+  "name": "知题 · Zetith",
+  "short_name": "知题",
+  "description": "智能题库学习系统 — 科学刷题，高效备考",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9f8f6",
+  "theme_color": "#f2866e",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

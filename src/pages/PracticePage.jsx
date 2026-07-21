@@ -256,7 +256,7 @@ export default function PracticePage() {
         <span>正确 {correct} 题</span>
       </div>
 
-      <div className="question-card">
+      <div className="question-card" style={{ marginBottom: '0' }}>
         <div className="question-meta">
           <span className="question-badge badge-type">{d.question_type}</span>
           {d.difficulty && <span className="question-badge badge-difficulty">{d.difficulty}</span>}
@@ -284,23 +284,35 @@ export default function PracticePage() {
         </div>
 
         {!done ? (
-          <div style={{ textAlign: 'center' }}>
+          <div style={{ textAlign: 'center', paddingBottom: '16px' }}>
             <button className="btn btn-primary btn-large" onClick={submit} disabled={option === null}>
               提交答案
             </button>
           </div>
         ) : (
-          <div>
+          <div style={{ paddingBottom: '16px' }}>
             <div className={`explanation-box ${result?.isCorrect ? 'correct-box' : 'wrong-box'}`}>
               <h4>{result?.isCorrect ? '正确' : '错误'} — 答案：{result?.correctAnswer}</h4>
               {q.explanation && <p style={{ marginTop: '8px' }}>{q.explanation}</p>}
             </div>
-            <div className="action-bar">
-              <button className="btn btn-primary" onClick={next}>
-                {index < questions.length - 1 ? '下一题' : '查看结果'}
-              </button>
-            </div>
           </div>
+        )}
+      </div>
+
+      {/* Fixed bottom action bar */}
+      <div className="practice-fixed-bar">
+        <button className="btn btn-outline" onClick={() => { setIndex(i => Math.max(0, i - 1)); setOption(null); setDone(false); setResult(null) }}
+          disabled={index === 0 && !done}>
+          上一题
+        </button>
+        {!done ? (
+          <button className="btn btn-primary" onClick={submit} disabled={option === null}>
+            提交答案
+          </button>
+        ) : (
+          <button className="btn btn-primary" onClick={next}>
+            {index < questions.length - 1 ? '下一题' : '查看结果'}
+          </button>
         )}
       </div>
     </div>

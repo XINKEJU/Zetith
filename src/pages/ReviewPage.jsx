@@ -146,7 +146,7 @@ export default function ReviewPage() {
           <span>阶段: {currentQ.stage || 0} | 间隔: {currentQ.interval_days || 0} 天</span>
         </div>
 
-        <div className="question-card">
+        <div className="question-card" style={{ marginBottom: '0' }}>
           <div className="question-meta">
             <span className="question-badge badge-type">{currentD.question_type}</span>
             <span className="question-badge badge-difficulty">{currentD.difficulty}</span>
@@ -175,13 +175,13 @@ export default function ReviewPage() {
           </div>
 
           {!submitted ? (
-            <div style={{ textAlign: 'center' }}>
+            <div style={{ textAlign: 'center', paddingBottom: '16px' }}>
               <button className="btn btn-primary btn-large" onClick={handleSubmitAnswer} disabled={selectedOption === null}>
                 提交答案
               </button>
             </div>
           ) : showRate && !rated ? (
-            <div>
+            <div style={{ paddingBottom: '16px' }}>
               <div className={`explanation-box ${answerResult?.isCorrect ? 'correct-box' : 'wrong-box'}`}>
                 <h4>{answerResult?.isCorrect ? '✅ 正确' : '❌ 错误'} · 正确答案: {answerResult?.correctAnswer}</h4>
                 {currentQ.explanation && <p style={{ marginTop: '8px' }}>{currentQ.explanation}</p>}
@@ -191,7 +191,7 @@ export default function ReviewPage() {
                 <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
                   请评价你对这道题的掌握程度：
                 </p>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <div className="rating-buttons" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
                   {QUALITY_LABELS.map(q => (
                     <button
                       key={q.value}
@@ -215,14 +215,21 @@ export default function ReviewPage() {
                 </div>
               </div>
             </div>
-          ) : rated && (
-            <div className="action-bar">
-              <button className="btn btn-primary" onClick={handleNext}>
-                {currentIndex < questions.length - 1 ? '下一题 →' : '完成复习'}
-              </button>
-            </div>
-          )}
+          ) : null}
         </div>
+
+        {/* Fixed bottom bar for review */}
+        {rated && (
+          <div className="practice-fixed-bar">
+            <button className="btn btn-outline" onClick={() => { setCurrentIndex(i => Math.max(0, i - 1)); setSelectedOption(null); setSubmitted(false); setAnswerResult(null); setShowRate(false); setRated(false) }}
+              disabled={currentIndex === 0}>
+              上一题
+            </button>
+            <button className="btn btn-primary" onClick={handleNext}>
+              {currentIndex < questions.length - 1 ? '下一题' : '完成复习'}
+            </button>
+          </div>
+        )}
       </div>
     )
   }

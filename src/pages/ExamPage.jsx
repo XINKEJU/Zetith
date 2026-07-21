@@ -105,6 +105,23 @@ export default function ExamPage() {
     }
   }
 
+  const handlePrev = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(i => i - 1)
+      // Restore previous answer if exists
+      const prevResult = results[currentIndex - 1]
+      if (prevResult) {
+        setSubmitted(true)
+        setAnswerResult(prevResult)
+        setSelectedOption(null)
+      } else {
+        setSelectedOption(null)
+        setSubmitted(false)
+        setAnswerResult(null)
+      }
+    }
+  }
+
   const correctCount = results.filter(r => r.isCorrect).length
   const score = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0
   const passed = score >= passingScore
@@ -306,7 +323,7 @@ export default function ExamPage() {
         <span>已答 {results.length} 题，正确 {correctCount}</span>
       </div>
 
-      <div className="question-card">
+      <div className="question-card" style={{ marginBottom: '0' }}>
         <div className="question-meta">
           <span className="question-badge badge-type">{currentD.question_type}</span>
           <span className="question-badge badge-difficulty">{currentD.difficulty}</span>
@@ -335,33 +352,34 @@ export default function ExamPage() {
         </div>
 
         {!submitted ? (
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center', paddingBottom: '16px' }}>
             <button className="btn btn-primary btn-large" onClick={handleSubmitAnswer} disabled={selectedOption === null}>
               提交答案
             </button>
           </div>
         ) : (
-          <div>
+          <div style={{ paddingBottom: '16px' }}>
             <div className={`explanation-box ${answerResult?.isCorrect ? 'correct-box' : 'wrong-box'}`}>
               <h4>{answerResult?.isCorrect ? '✅ 正确' : '❌ 错误'} · 正确答案: {answerResult?.correctAnswer}</h4>
-            </div>
-            <div className="action-bar">
-              {currentIndex < questions.length - 1 ? (
-                <button className="btn btn-primary" onClick={handleNext}>下一题 →</button>
-              ) : (
-                <button className="btn btn-success btn-large" onClick={handleSubmitExam}>
-                  提交试卷
-                </button>
-              )}
             </div>
           </div>
         )}
       </div>
 
-      <div style={{ textAlign: 'center', marginTop: '12px' }}>
-        <button className="btn btn-outline" onClick={handleSubmitExam} style={{ color: 'var(--text-light)' }}>
-          提前交卷
+      {/* Fixed bottom bar */}
+      <div className="practice-fixed-bar">
+        <button className="btn btn-outline" onClick={handlePrev} disabled={currentIndex === 0}>
+          上一题
         </button>
+        {!submitted ? (
+          <button className="btn btn-primary" onClick={handleSubmitAnswer} disabled={selectedOption === null}>
+            提交答案
+          </button>
+        ) : currentIndex < questions.length - 1 ? (
+          <button className="btn btn-primary" onClick={handleNext}>下一题</button>
+        ) : (
+          <button className="btn btn-success" onClick={handleSubmitExam}>提交试卷</button>
+        )}
       </div>
     </div>
   )

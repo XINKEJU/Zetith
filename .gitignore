@@ -5,3 +5,4 @@ dist/
 .vite/
 tiku.db
 release/
+public/icon.iconset/

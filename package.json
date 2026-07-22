@@ -41,7 +41,7 @@
     ],
     "mac": {
       "category": "public.app-category.education",
-      "icon": "public/icon-512.png",
+      "icon": "public/icon.icns",
       "target": [
         {
           "target": "dmg",

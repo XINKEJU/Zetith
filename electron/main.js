@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, Menu } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Menu, screen } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import http from 'http'
@@ -13,6 +13,7 @@ app.name = '知题'
 let mainWindow = null
 let server = null
 let serverPort = 0
+let userData = ''
 
 function getDistDir() {
   const basePath = app.getAppPath()
@@ -92,11 +93,32 @@ function startServer() {
   })
 }
 
+// 读取上次保存的窗口位置（首次或无记录返回 null）
+function getSavedBounds() {
+  try {
+    const s = JSON.parse(fs.readFileSync(path.join(userData, 'window-state.json'), 'utf8'))
+    if (s && Number.isFinite(s.x) && Number.isFinite(s.y) && Number.isFinite(s.width) && Number.isFinite(s.height)) {
+      return s
+    }
+  } catch {}
+  return null
+}
+
+// 校验窗口是否仍在某个显示器的可视工作区内（避免外接屏拔除后跑到屏幕外）
+function isOnAnyScreen(b) {
+  return screen.getAllDisplays().some(d => {
+    const a = d.workArea
+    return !(b.x + b.width < a.x || b.x > a.x + a.width ||
+             b.y + b.height < a.y || b.y > a.y + a.height)
+  })
+}
+
 function createWindow() {
   const isMac = process.platform === 'darwin'
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+  const saved = getSavedBounds()
+  const winOpts = {
+    width: saved?.width || 1280,
+    height: saved?.height || 800,
     minWidth: 800,
     minHeight: 600,
     title: '知题 · Zetith',
@@ -108,7 +130,16 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs')
     }
-  })
+  }
+  // 有有效记录则还原位置，否则屏幕居中
+  if (saved && isOnAnyScreen(saved)) {
+    winOpts.x = saved.x
+    winOpts.y = saved.y
+  } else {
+    winOpts.center = true
+  }
+
+  mainWindow = new BrowserWindow(winOpts)
 
   mainWindow.loadURL(`http://127.0.0.1:${serverPort}/`)
 
@@ -125,6 +156,15 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http')) shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // 关闭时保存窗口位置与尺寸，下次启动还原
+  mainWindow.on('close', () => {
+    if (mainWindow) {
+      try {
+        fs.writeFileSync(path.join(userData, 'window-state.json'), JSON.stringify(mainWindow.getBounds()))
+      } catch {}
+    }
   })
 
   mainWindow.on('closed', () => { mainWindow = null })
@@ -226,7 +266,7 @@ function buildMenu() {
 }
 
 app.whenReady().then(async () => {
-  const userData = app.getPath('userData')
+  userData = app.getPath('userData')
 
   // 数据库持久化：Electron 下把 tiku.db 存到 userData（Node fs），不依赖 OPFS
   ipcMain.handle('db:read', async (event, name) => {

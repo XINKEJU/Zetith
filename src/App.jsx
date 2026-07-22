@@ -4,6 +4,7 @@ import { AppProvider } from './context/AppContext'
 import { ToastProvider } from './components/ToastProvider'
 import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
+import AuthModal from './components/AuthModal'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
 const CategoriesPage = lazy(() => import('./pages/CategoriesPage'))
@@ -80,6 +81,7 @@ export default function App() {
         </Suspense>
       </Layout>
       </ErrorBoundary>
+      <AuthModal />
       </ToastProvider>
     </AppProvider>
   )

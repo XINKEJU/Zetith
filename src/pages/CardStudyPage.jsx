@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { getCategoryById, toggleBookmark, isBookmarked, getFilteredQuestions, getTagsByCategory } from '../db/database'
 import { shuffleArray } from '../services/studyService'
+import { ensureCategoryQuestions } from '../services/questionBank'
 
 export default function CardStudyPage() {
   const navigate = useNavigate()
@@ -24,11 +25,12 @@ export default function CardStudyPage() {
     try { return getTagsByCategory(parseInt(selectedCategoryId)) } catch { return [] }
   }, [selectedCategoryId])
 
-  const begin = () => {
+  const begin = async () => {
     if (!selectedCategoryId) return
-    let qs = getFilteredQuestions(+selectedCategoryId, { 
-      tag: selectedTag || undefined, 
-      difficulty: selectedDifficulty || undefined 
+    await ensureCategoryQuestions(+selectedCategoryId).catch(() => {})
+    let qs = getFilteredQuestions(+selectedCategoryId, {
+      tag: selectedTag || undefined,
+      difficulty: selectedDifficulty || undefined
     })
     if (randomOrder) qs = shuffleArray(qs)
     if (!qs.length) return

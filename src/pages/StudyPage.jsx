@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getQuestionsByCategory, getCategoryById, toggleBookmark, isBookmarked, getNote, saveNote } from '../db/database'
 import { shuffleArray, prepareQuestionForDisplay } from '../services/studyService'
+import { ensureCategoryQuestions } from '../services/questionBank'
 import { useToast } from '../components/ToastProvider'
 
 export default function StudyPage() {
@@ -29,9 +30,14 @@ export default function StudyPage() {
       return
     }
     setCategory(cat)
-    const qs = getQuestionsByCategory(catId)
-    setQuestions(qs)
-    setLoading(false)
+    setLoading(true)
+    // 先从云端同步本分类题目到本地缓存（已缓存/离线则立即返回），再读本地
+    ensureCategoryQuestions(catId)
+      .catch(() => {})
+      .finally(() => {
+        setQuestions(getQuestionsByCategory(catId))
+        setLoading(false)
+      })
   }, [categoryId, navigate])
 
   useEffect(() => {

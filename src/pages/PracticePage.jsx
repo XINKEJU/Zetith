@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { saveStudyRecord, getFilteredRandomQuestions, getAllTags, saveSession } from '../db/database'
 import { prepareQuestionForDisplay, checkAnswer } from '../services/studyService'
 import { playCorrect, playIncorrect, playComplete } from '../services/soundService'
+import { ensureCategoryQuestions } from '../services/questionBank'
 
 export default function PracticePage() {
   const navigate = useNavigate()
@@ -65,8 +66,9 @@ export default function PracticePage() {
     }
   }, [phase, perQuestionTimer, done])
 
-  const begin = () => {
+  const begin = async () => {
     if (!selectedCategoryId) return
+    await ensureCategoryQuestions(+selectedCategoryId).catch(() => {})
     const qs = getFilteredRandomQuestions(+selectedCategoryId, questionCount, {
       tag: filterTag || undefined,
       difficulty: filterDifficulty || undefined

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { searchQuestions } from '../db/database'
+import { searchQuestions as localSearchQuestions } from '../db/database'
+import { searchQuestions } from '../services/questionBank'
 
 export default function SearchModal({ onClose }) {
   const [query, setQuery] = useState('')
@@ -8,6 +9,7 @@ export default function SearchModal({ onClose }) {
   const [searching, setSearching] = useState(false)
   const inputRef = useRef(null)
   const navigate = useNavigate()
+  const reqId = useRef(0)
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -20,12 +22,16 @@ export default function SearchModal({ onClose }) {
       return
     }
     setSearching(true)
-    const timer = setTimeout(() => {
+    const myReq = ++reqId.current
+    const timer = setTimeout(async () => {
       try {
-        const r = searchQuestions(query)
-        setResults(r)
-      } catch { setResults([]) }
-      setSearching(false)
+        const r = await searchQuestions(query)
+        // 仅采纳最新一次请求的结果，避免竞态
+        if (myReq === reqId.current) setResults(r)
+      } catch {
+        try { setResults(localSearchQuestions(query)) } catch { setResults([]) }
+      }
+      if (myReq === reqId.current) setSearching(false)
     }, 200)
     return () => { clearTimeout(timer); setSearching(false) }
   }, [query])

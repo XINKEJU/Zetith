@@ -2,6 +2,33 @@ import { supabase, isSupabaseConfigured } from './supabaseClient'
 
 const LS_EMAIL = 'zetith_account_email' // 仅缓存邮箱用于界面展示，绝不缓存密码
 
+// 登录态缓存（同步可读，供写入操作即时判断是否已登录，无需每次走网络）
+let cachedUser = null
+
+// 供 Layout / 登录成功后更新缓存；requireAuth 依据它即时判断
+export function setCachedUser(user) {
+  cachedUser = user || null
+}
+
+export function getCachedUser() {
+  return cachedUser
+}
+
+export function isLoggedIn() {
+  return !!cachedUser
+}
+
+// 强制登录闸门（同步）：已登录返回 true；未登录则派发全局事件弹出登录弹窗并返回 false。
+// 所有「写操作」在落库前调用它，实现「未登录只能浏览，任何操作强制登录」。
+export function requireAuth(reason = '此操作') {
+  if (cachedUser) return true
+  try {
+    window.dispatchEvent(new CustomEvent('zetith:require-login', { detail: { reason } }))
+  } catch {}
+  return false
+}
+
+
 // 后端是否已配置（开发者在 .env 中填入 Supabase 凭据）
 export function isConfigured() {
   return isSupabaseConfigured()

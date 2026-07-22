@@ -1,4 +1,5 @@
 import initSqlJs from 'sql.js';
+import { requireAuth } from '../services/account'
 
 let db = null;
 let SQL = null;
@@ -146,8 +147,17 @@ export async function initDatabase(onProgress) {
     name TEXT NOT NULL,
     description TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime')),
-    updated_at TEXT DEFAULT (datetime('now','localtime'))
+    updated_at TEXT DEFAULT (datetime('now','localtime')),
+    question_count INTEGER DEFAULT 0
   )`);
+
+  // 迁移：为旧数据库添加 question_count 列（云同步题量缓存用）
+  try {
+    const cols = safeExec('PRAGMA table_info(categories)')
+    if (cols.length && !cols[0].values.map(r => r[1]).includes('question_count')) {
+      safeRun('ALTER TABLE categories ADD COLUMN question_count INTEGER DEFAULT 0')
+    }
+  } catch (e) { /* 忽略迁移错误 */ }
 
   safeRun(`CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -287,8 +297,8 @@ export function getDatabase() {
 
 // Category operations
 export function getAllCategories() {
-  const result = safeExec(`SELECT c.*, 
-    (SELECT COUNT(*) FROM questions WHERE category_id = c.id) as question_count
+  const result = safeExec(`SELECT c.id, c.name, c.description, c.created_at, c.updated_at,
+    COALESCE((SELECT COUNT(*) FROM questions WHERE category_id = c.id), c.question_count) as question_count
     FROM categories c ORDER BY c.updated_at DESC`);
   if (!result.length) return [];
   return result[0].values.map(row => ({
@@ -372,6 +382,7 @@ function mapQuestionRow(row) {
 
 // Study records
 export function saveStudyRecord(questionId, categoryId, isCorrect, answerGiven, timeSpent) {
+  if (!requireAuth('提交答题')) return
   safeRun(
     'INSERT INTO study_records (question_id, category_id, is_correct, answer_given, time_spent) VALUES (?, ?, ?, ?, ?)',
     [questionId, categoryId, isCorrect ? 1 : 0, answerGiven, timeSpent]
@@ -440,6 +451,7 @@ export function getWrongQuestionIds(categoryId = null) {
 
 // Bookmarks
 export function toggleBookmark(questionId) {
+  if (!requireAuth('收藏题目')) return false
   const existing = safeExec('SELECT id FROM bookmarks WHERE question_id = ?', [questionId]);
   if (existing.length && existing[0].values.length) {
     safeRun('DELETE FROM bookmarks WHERE question_id = ?', [questionId]);
@@ -505,6 +517,8 @@ export function setReviewState(questionId, quality) {
     interval = existing[0].values[0][2];
   }
 
+  if (!requireAuth('设置复习计划')) return { stage, easeFactor, interval }
+
   const updated = sm2Update(quality, stage, easeFactor, interval);
   const nextReview = new Date();
   nextReview.setDate(nextReview.getDate() + updated.interval);
@@ -548,6 +562,7 @@ export function getReviewDueCount() {
 }
 
 export function addToReviewQueue(questionId, stage = 0, easeFactor = 2.5, interval = 0) {
+  if (!requireAuth('加入复习队列')) return
   const now = new Date();
   const nextReview = new Date();
   nextReview.setDate(nextReview.getDate() + interval);
@@ -590,6 +605,7 @@ export function getNote(questionId) {
 }
 
 export function saveNote(questionId, content) {
+  if (!requireAuth('记笔记')) return
   safeRun(`INSERT OR REPLACE INTO notes (question_id, content, updated_at) VALUES (?, ?, datetime('now','localtime'))`,
     [questionId, content]
   );
@@ -715,6 +731,7 @@ export function getIndividualTagStats() {
 
 // ======= 错题移除 =======
 export function markQuestionMastered(questionId) {
+  if (!requireAuth('移除错题')) return
   safeRun('DELETE FROM study_records WHERE question_id = ?', [questionId]);
 }
 
@@ -905,6 +922,7 @@ export function detectDuplicates(categoryId) {
 }
 
 export function removeDuplicatesInCategory(categoryId) {
+  if (!requireAuth('去重清理')) return 0
   const dupes = safeExec(`
     SELECT stem, answer FROM questions WHERE category_id = ?
     GROUP BY stem, answer HAVING COUNT(*) > 1
@@ -974,6 +992,7 @@ export function getLevelInfo(xp) {
 
 // ======= 错因标签 =======
 export function markWrongReason(questionId, reason) {
+  if (!requireAuth('标记错因')) return
   safeRun('UPDATE study_records SET wrong_reason = ? WHERE question_id = ? AND is_correct = 0',
     [reason, questionId]
   );
@@ -1008,6 +1027,7 @@ export function getWrongQuestionsWithReason(categoryId = null) {
 
 // Reset all data
 export async function clearAllData() {
+  if (!requireAuth('清空所有数据')) return
   safeRun('DELETE FROM study_records');
   safeRun('DELETE FROM bookmarks');
   safeRun('DELETE FROM questions');
@@ -1019,6 +1039,7 @@ export async function clearAllData() {
 
 // ======= 练习/考试会话 =======
 export function saveSession({ type, categoryId, total, correct, timeSpent, score, items }) {
+  if (!requireAuth('保存练习记录')) return null
   safeRun(
     'INSERT INTO sessions (type, category_id, total, correct, time_spent, score, finished_at) VALUES (?,?,?,?,?,?, datetime(\'now\',\'localtime\'))',
     [type, categoryId || null, total, correct, timeSpent, score]
@@ -1098,6 +1119,7 @@ export async function restoreDatabase(file) {
 
 // ======= 题目编辑 =======
 export function updateQuestion(id, updates) {
+  if (!requireAuth('编辑题目')) return
   const fields = [];
   const params = [];
   const map = {
@@ -1118,6 +1140,7 @@ export function updateQuestion(id, updates) {
 }
 
 export function addQuestion(data) {
+  if (!requireAuth('新增题目')) return
   safeRun(
     'INSERT INTO questions (category_id, stem, option_a, option_b, option_c, option_d, answer, explanation, difficulty, tags) VALUES (?,?,?,?,?,?,?,?,?,?)',
     [data.category_id, data.stem, data.option_a || '', data.option_b || '',
@@ -1128,6 +1151,7 @@ export function addQuestion(data) {
 }
 
 export function deleteQuestion(id) {
+  if (!requireAuth('删除题目')) return
   safeRun('DELETE FROM questions WHERE id = ?', [id]);
   saveDatabase().catch(() => {});
 }

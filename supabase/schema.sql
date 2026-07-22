@@ -37,3 +37,63 @@ create policy "sync_docs_owner_all"
 -- 2. 注册/登录走 Supabase Auth（邮箱+密码），无需自建账号服务。
 -- 3. 如需关闭「注册需邮箱确认」以便即时体验，在
 --    Authentication → Providers → Email 中关闭「Confirm email」。
+
+-- ============================================================
+-- 题库（云端源）：分类 + 题目
+-- 题目与分类仅由管理员经 service_role 写入（见 scripts/seed-questions.mjs），
+-- 普通用户与匿名用户只读（用于浏览）；RLS 不给写策略即不可写。
+-- 注意：id 沿用本地 tiku.db 的整数 id，保证 study_records / bookmarks 等
+--       以 question_id 关联的进度在各端一致对应。
+-- ============================================================
+
+create table if not exists public.categories (
+  id          bigint       primary key,
+  name        text         not null,
+  description text         default '',
+  created_at  timestamptz  default now(),
+  updated_at  timestamptz  default now()
+);
+
+create table if not exists public.questions (
+  id           bigint       primary key,
+  category_id  bigint       not null references public.categories(id) on delete cascade,
+  question_type text        default '单选题',
+  stem         text         not null,
+  option_a     text         default '',
+  option_b     text         default '',
+  option_c     text         default '',
+  option_d     text         default '',
+  answer       text         not null,
+  explanation  text         default '',
+  difficulty   text         default '适中',
+  tags         text         default '',
+  created_at   timestamptz  default now()
+);
+
+create index if not exists questions_category_idx on public.questions (category_id);
+
+-- 公开只读：任何人（含匿名）可浏览题目与分类；无写策略 → 仅 service_role 可写
+alter table public.categories enable row level security;
+alter table public.questions enable row level security;
+
+drop policy if exists "categories_public_read" on public.categories;
+create policy "categories_public_read"
+  on public.categories for select using (true);
+
+drop policy if exists "questions_public_read" on public.questions;
+create policy "questions_public_read"
+  on public.questions for select using (true);
+
+-- 分类题目计数 RPC（供客户端显示每类题量，避免前端拉全表）
+create or replace function public.category_question_counts()
+returns table (category_id bigint, cnt bigint)
+language sql
+security definer
+set search_path = public
+as $$
+  select category_id, count(*)::bigint as cnt
+  from public.questions
+  group by category_id
+$$;
+
+grant execute on function public.category_question_counts() to anon, authenticated;

@@ -70,11 +70,12 @@ export default function Layout({ children }) {
   useEffect(() => {
     if (!account.isConfigured() || !dbReady) return
     const off = account.onAuthChange((user) => {
+      account.setCachedUser(user)
       if (user) supabaseSync.startAutoSync(user)
       else supabaseSync.stopAutoSync()
     })
     account.getSession().then((s) => {
-      if (s?.user) supabaseSync.startAutoSync(s.user)
+      if (s?.user) { account.setCachedUser(s.user); supabaseSync.startAutoSync(s.user) }
     })
     return off
   }, [dbReady])

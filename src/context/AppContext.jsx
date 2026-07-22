@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { initDatabase, getAllCategories, getStudyStats, getWrongQuestions, saveDatabase } from '../db/database'
+import * as questionBank from '../services/questionBank'
 
 const AppContext = createContext(null)
 const isDev = import.meta.env.DEV
@@ -51,6 +52,12 @@ export function AppProvider({ children }) {
   useEffect(() => {
     refreshData()
   }, [refreshData])
+
+  // 数据库就绪后，从云端同步分类（题库源），完成后刷新分类列表与题量
+  useEffect(() => {
+    if (!dbReady) return
+    questionBank.hydrateCategories().finally(() => refreshData())
+  }, [dbReady])
 
   const persistAndRefresh = useCallback(async () => {
     await saveDatabase()

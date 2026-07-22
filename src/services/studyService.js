@@ -10,28 +10,6 @@ export function shuffleArray(arr) {
   return result;
 }
 
-// Generate a random permutation for options (A, B, C, D)
-export function shuffleOptions() {
-  const indices = [0, 1, 2, 3];
-  for (let i = indices.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [indices[i], indices[j]] = [indices[j], indices[i]];
-  }
-  return indices;
-}
-
-// Map shuffled option index back to original letter
-export function mapToOriginalAnswer(shuffledIndices, selectedIndex) {
-  const letters = ['A', 'B', 'C', 'D'];
-  return letters[shuffledIndices[selectedIndex]];
-}
-
-// Get option letters in shuffled order
-export function getShuffledOptionLetters(shuffledIndices) {
-  const letters = ['A', 'B', 'C', 'D'];
-  return shuffledIndices.map(i => letters[i]);
-}
-
 export function prepareQuestionForDisplay(question, optionShuffle = true) {
   const options = question.question_type === '判断题'
     ? [

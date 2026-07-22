@@ -10,14 +10,6 @@ export function setCachedUser(user) {
   cachedUser = user || null
 }
 
-export function getCachedUser() {
-  return cachedUser
-}
-
-export function isLoggedIn() {
-  return !!cachedUser
-}
-
 // 强制登录闸门（同步）：已登录返回 true；未登录则派发全局事件弹出登录弹窗并返回 false。
 // 所有「写操作」在落库前调用它，实现「未登录只能浏览，任何操作强制登录」。
 export function requireAuth(reason = '此操作') {

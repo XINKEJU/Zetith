@@ -287,7 +287,7 @@ export async function saveDatabase() {
   if (!db) return;
   const data = db.export();
   await writeStoredDB(data);
-  // 通知同步层（Cloudant 等）：本地数据已落盘，可触发上传
+  // 通知同步层（Supabase）：本地数据已落盘，可触发上传
   try { window.dispatchEvent(new Event('zetith:db-saved')); } catch {}
 }
 
@@ -366,11 +366,6 @@ export function getRandomQuestions(categoryId, count) {
   return result[0].values.map(mapQuestionRow);
 }
 
-export function getQuestionCount(categoryId) {
-  const result = safeExec('SELECT COUNT(*) FROM questions WHERE category_id = ?', [categoryId]);
-  return result[0].values[0][0];
-}
-
 function mapQuestionRow(row) {
   return {
     id: row[0], category_id: row[1], question_type: row[2], stem: row[3],
@@ -441,14 +436,6 @@ export function getWrongQuestions(categoryId = null) {
   }));
 }
 
-export function getWrongQuestionIds(categoryId = null) {
-  let sql = 'SELECT DISTINCT question_id FROM study_records WHERE is_correct = 0';
-  if (categoryId) sql += ' AND category_id = ?';
-  const result = safeExec(sql, categoryId ? [categoryId] : []);
-  if (!result.length) return new Set();
-  return new Set(result[0].values.map(r => r[0]));
-}
-
 // Bookmarks
 export function toggleBookmark(questionId) {
   if (!requireAuth('收藏题目')) return false
@@ -465,12 +452,6 @@ export function toggleBookmark(questionId) {
 export function isBookmarked(questionId) {
   const result = safeExec('SELECT id FROM bookmarks WHERE question_id = ?', [questionId]);
   return result.length > 0 && result[0].values.length > 0;
-}
-
-export function getBookmarkIds() {
-  const result = safeExec('SELECT question_id FROM bookmarks');
-  if (!result.length) return new Set();
-  return new Set(result[0].values.map(r => r[0]));
 }
 
 // Stats
@@ -552,13 +533,6 @@ export function getDueReviewQuestions(categoryId = null) {
   const result = safeExec(sql);
   if (!result.length) return [];
   return result[0].values.map(mapReviewRow);
-}
-
-export function getReviewDueCount() {
-  const result = safeExec(
-    "SELECT COUNT(*) FROM review_state WHERE next_review_at <= datetime('now', 'localtime')"
-  );
-  return result[0].values[0][0];
 }
 
 export function addToReviewQueue(questionId, stage = 0, easeFactor = 2.5, interval = 0) {
@@ -654,24 +628,6 @@ export function getCategoryProgress(categoryId) {
 }
 
 // ======= 弱项诊断 =======
-export function getTagAnalysis() {
-  const result = safeExec(`
-    SELECT q.tags,
-      COUNT(sr.id) as total,
-      SUM(CASE WHEN sr.is_correct = 1 THEN 1 ELSE 0 END) as correct
-    FROM study_records sr
-    JOIN questions q ON sr.question_id = q.id
-    WHERE q.tags != '' AND sr.is_correct = 0
-    GROUP BY q.tags
-    ORDER BY total DESC
-    LIMIT 20
-  `);
-  if (!result.length) return [];
-  return result[0].values.map(row => {
-    const tags = row[0].split(',').filter(Boolean).map(t => t.trim());
-    return { tags, total: row[1], correct: row[2] };
-  });
-}
 
 export function getIndividualTagStats() {
   // 单查询拉取「题目标签 + 是否正确」，在 JS 层按逗号拆标签聚合，
@@ -888,16 +844,6 @@ export function getFilteredRandomQuestions(categoryId, count, { tag, difficulty 
 }
 
 // ======= 试题去重 =======
-export function detectDuplicates(categoryId) {
-  const result = safeExec(`
-    SELECT stem, answer, COUNT(*) as cnt
-    FROM questions WHERE category_id = ?
-    GROUP BY stem, answer
-    HAVING cnt > 1
-  `, [categoryId]);
-  if (!result.length) return 0;
-  return result[0].values.length;
-}
 
 export function removeDuplicatesInCategory(categoryId) {
   if (!requireAuth('去重清理')) return 0
@@ -974,33 +920,6 @@ export function markWrongReason(questionId, reason) {
   safeRun('UPDATE study_records SET wrong_reason = ? WHERE question_id = ? AND is_correct = 0',
     [reason, questionId]
   );
-}
-
-export function getWrongQuestionsWithReason(categoryId = null) {
-  let sql = `
-    SELECT q.*, 
-      COUNT(sr.id) as wrong_count,
-      MAX(sr.practiced_at) as last_wrong_time,
-      GROUP_CONCAT(DISTINCT CASE WHEN sr.wrong_reason IS NOT NULL AND sr.wrong_reason != '' THEN sr.wrong_reason END) as reasons
-    FROM questions q
-    INNER JOIN study_records sr ON q.id = sr.question_id
-    WHERE sr.is_correct = 0
-  `;
-  const params = [];
-  if (categoryId) {
-    sql += ' AND q.category_id = ?';
-    params.push(categoryId);
-  }
-  sql += ' GROUP BY q.id ORDER BY wrong_count DESC, last_wrong_time DESC';
-  
-  const result = safeExec(sql, params);
-  if (!result.length) return [];
-  return result[0].values.map(row => ({
-    ...mapQuestionRow(row.slice(0, 13)),
-    wrong_count: row[13],
-    last_wrong_time: row[14],
-    reasons: row[15] ? row[15].split(',').filter(Boolean) : []
-  }));
 }
 
 // Reset all data
@@ -1096,50 +1015,6 @@ export async function restoreDatabase(file) {
 }
 
 // ======= 题目编辑 =======
-export function updateQuestion(id, updates) {
-  if (!requireAuth('编辑题目')) return
-  const fields = [];
-  const params = [];
-  const map = {
-    stem: 'stem', option_a: 'option_a', option_b: 'option_b',
-    option_c: 'option_c', option_d: 'option_d', answer: 'answer',
-    explanation: 'explanation', difficulty: 'difficulty', tags: 'tags', category_id: 'category_id'
-  };
-  for (const [key, col] of Object.entries(map)) {
-    if (updates[key] !== undefined) {
-      fields.push(`${col} = ?`);
-      params.push(updates[key]);
-    }
-  }
-  if (!fields.length) return;
-  params.push(id);
-  safeRun(`UPDATE questions SET ${fields.join(', ')} WHERE id = ?`, params);
-  saveDatabase().catch(() => {});
-}
-
-export function addQuestion(data) {
-  if (!requireAuth('新增题目')) return
-  safeRun(
-    'INSERT INTO questions (category_id, stem, option_a, option_b, option_c, option_d, answer, explanation, difficulty, tags) VALUES (?,?,?,?,?,?,?,?,?,?)',
-    [data.category_id, data.stem, data.option_a || '', data.option_b || '',
-     data.option_c || '', data.option_d || '', data.answer, data.explanation || '',
-     data.difficulty || '适中', data.tags || '']
-  );
-  saveDatabase().catch(() => {});
-}
-
-export function deleteQuestion(id) {
-  if (!requireAuth('删除题目')) return
-  safeRun('DELETE FROM questions WHERE id = ?', [id]);
-  saveDatabase().catch(() => {});
-}
-
-export function getQuestionsByDifficulty(categoryId, difficulty) {
-  const sql = 'SELECT * FROM questions WHERE category_id = ? AND difficulty = ?';
-  const result = safeExec(sql, [categoryId, difficulty]);
-  if (!result.length) return [];
-  return result[0].values.map(mapQuestionRow);
-}
 
 export function getDailyHeatmap(days = 365) {
   const result = safeExec(
@@ -1158,3 +1033,4 @@ export function getLearningDaysCount(days = 365) {
   );
   return result[0]?.values?.[0]?.[0] || 0;
 }
+

@@ -1,4 +1,4 @@
-// Electron 渲染进程 polyfill：PouchDB 等库会读取 process.browser / global
+// Electron 渲染进程 polyfill：部分依赖库会读取 process / global
 if (typeof window !== 'undefined') {
   if (typeof window.process === 'undefined') window.process = { browser: true, env: {} }
   if (typeof window.global === 'undefined') window.global = window

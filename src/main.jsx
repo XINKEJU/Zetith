@@ -1,3 +1,9 @@
+// Electron 渲染进程 polyfill：PouchDB 等库会读取 process.browser / global
+if (typeof window !== 'undefined') {
+  if (typeof window.process === 'undefined') window.process = { browser: true, env: {} }
+  if (typeof window.global === 'undefined') window.global = window
+}
+
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
@@ -62,3 +68,11 @@ function disableSelectionCopy() {
 }
 
 disableSelectionCopy()
+
+// 捕获未处理异常，避免白屏后无日志
+window.addEventListener('error', (e) => {
+  console.error('[global error]', e.message, 'at', e.filename, e.lineno, e.colno, e.error)
+})
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('[unhandled rejection]', e.reason)
+})

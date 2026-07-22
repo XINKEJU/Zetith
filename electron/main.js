@@ -149,8 +149,17 @@ function createWindow() {
     console.error('Failed to load:', errorCode, errorDescription, validatedURL)
   })
 
-  mainWindow.webContents.on('console-message', (event, level, message) => {
-    if (level >= 2) console.log(`[Renderer L${level}]`, message)
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    const lineInfo = sourceId ? ` ${sourceId}:${line || 0}` : ''
+    if (level >= 2) console.log(`[Renderer L${level}]`, message, lineInfo)
+    // 把渲染进程错误持久化，便于排查白屏等问题
+    if (level >= 3) {
+      try {
+        const logPath = path.join(userData, 'renderer-error.log')
+        const lineText = `[${new Date().toISOString()}] ${message}${lineInfo}\n`
+        fs.appendFileSync(logPath, lineText)
+      } catch {}
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

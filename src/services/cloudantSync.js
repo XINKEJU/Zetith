@@ -8,6 +8,9 @@
 import PouchDB from 'pouchdb-browser'
 import { getDatabase, saveDatabase } from '../db/database'
 
+// 注意：PouchDB 在 Electron 渲染进程需要 process.browser / global polyfill，
+// 已在 index.html 与 main.jsx 顶部注入。
+
 const LS_URL = 'zetith_cloudant_url'
 const LS_KEY = 'zetith_cloudant_key'
 const LS_PWD = 'zetith_cloudant_pwd'

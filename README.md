@@ -37,11 +37,19 @@
 ## 技术栈
 
 - **框架**: React 18 + Vite
-- **数据库**: SQLite (WASM) via sql.js，OPFS 持久化
+- **数据库**: SQLite (WASM) via sql.js
+- **持久化**: 浏览器 / PWA 使用 OPFS；桌面端（Electron）经主进程 Node fs + IPC 落盘
 - **Excel**: SheetJS (xlsx)
 - **图表**: Chart.js + react-chartjs-2
 - **路由**: react-router-dom v6（React.lazy 代码分割）
+- **桌面端**: Electron 43 + electron-builder（本地 HTTP 服务 + IPC 持久化 + 中文专属菜单）
 - **PWA**: Service Worker + Web App Manifest
+
+## 文档
+
+- [软件使用说明](docs/知题-Zetith-软件使用说明.md) —— 面向用户
+- [开发文档](docs/知题-Zetith-开发文档.md) —— 面向开发者
+- [文档中心](docs/README.md) —— 文档索引
 
 ## 快速开始
 

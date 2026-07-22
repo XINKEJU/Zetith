@@ -1,4 +1,6 @@
-# 智能题库学习系统 —— 软件开发需求文档
+# 知题 · Zetith —— 开发文档
+
+> 智能题库学习系统 · 架构、实现现状与开发参考
 
 ## 版本历史
 
@@ -6,6 +8,7 @@
 | ---- | ---------- | ---- |
 | V1.0 | 2026-07-21 | 初始草案 |
 | V1.1 | 2026-07-22 | 补充实现现状：实际技术栈、目录结构、数据库层、Electron 桌面端打包、移动端适配 |
+| V1.2 | 2026-07-22 | 补充桌面端/移动端体验优化（系统深色、拖拽导入、Dock 进度、失焦暂停、专注模式、横屏、键盘避让、左右滑、触感、下拉刷新、自动更新框架）；菜单改为软件专属功能菜单 |
 
 ---
 
@@ -51,7 +54,9 @@ tiku-app/
 - **命令**：`npm run electron:build:dmg`（先 vite build，再 electron-builder --mac dmg）。
 - **配置要点**（package.json → build）：`appId: com.zetith.app`、`productName: 知题`、`asar: false`、`files: [dist/**, electron/**]`、mac target `dmg`（arm64 + x64）。
 - **产物**：`release/知题-1.0.0-<arch>.dmg`，未做 Apple 付费签名（首次打开需右键→打开）。
-- **中文菜单**：`main.js` 中 `app.name='知题'` + `Menu.buildFromTemplate` 构建知题/编辑/视图/窗口/帮助五组中文菜单（基于原生 role，保留标准快捷键）。
+- **软件专属菜单**：`main.js` 中 `app.name='知题'` + `Menu.buildFromTemplate` 构建「知题 / 学习 / 题库 / 编辑 / 视图 / 窗口 / 帮助」七组中文菜单。`学习` 与 `题库` 子菜单的菜单项通过 `webContents.send('app:menu', …)` 触发前端 `navigate` 真实跳转（如跳练习、模拟考试、题库管理）；`视图 › 跟随系统外观` 一键回归系统主题；`帮助 › 检查更新` 接入自动更新。
+- **窗口外观**：`titleBarStyle: 'hidden'` + `trafficLightPosition` 实现 macOS 红绿灯原生适配；窗体位置记忆（`userData/window-state.json` + `screen.isOnAnyScreen()` 多屏校验），首次启动居中。
+- **自动更新框架**：`electron-updater` 以动态 `import()` 方式接入（未安装不崩溃），`build.publish` 已配 GitHub Releases 通道；分发需签名 dmg + `GH_TOKEN`。
 
 ### 0.4 数据持久化双通道（关键实现）
 
@@ -83,6 +88,35 @@ tiku-app/
 - 4 级响应式断点（1024 / 768 / 480 / 360px）。
 - 侧边栏抽屉、底部 Tab 栏 + 中央 FAB、底部弹出菜单（Bottom Sheet）。
 - `env(safe-area-inset-*)` 安全区适配、禁用触摸设备 hover、禁止双击缩放。
+
+### 0.7 桌面端与移动端体验优化（V1.2）
+
+在 0.3 / 0.6 基础上，进一步补齐"好用"层体验：
+
+**桌面端（macOS）**
+
+| 特性 | 实现要点 |
+| ---- | ---- |
+| 跟随系统深色 | `nativeTheme` 监听系统外观；`⌘T` 手动切换时 override 系统；菜单「视图 › 跟随系统外观」回归系统 |
+| 拖拽 Excel 导入 | 渲染端 `dragover`/`drop` 拦截，过滤 `.xlsx/.xls/.csv`，复用 `importService.importFromFiles`；带全局遮罩提示，完成后跳题库管理 |
+| Dock 进度条 | 练习/考试进度经 `ipcRenderer` → 主进程 `BrowserWindow.setProgressBar`（仅 darwin），退出清除 |
+| 失焦暂停计时 | `window` `blur`/`focus` + `visibilitychange` 时暂停单题/考试倒计时，回到前台恢复 |
+| 答题专注模式 | 练习/考试页「专注模式」按钮，给 `body` 加 `focus-mode` 类隐藏侧栏/底栏（mac 红绿灯区留白） |
+
+**移动端**
+
+| 特性 | 实现要点 |
+| ---- | ---- |
+| 横屏布局 | `@media (orientation: landscape)` 下选项改两列网格、卡片限宽 |
+| 虚拟键盘避让 | `visualViewport` 监听，软键盘弹出时上移底部导航/答题底栏 |
+| 左右滑切题 | 练习/考试页 `touchstart`/`touchend` 识别左右滑切上/下一题 |
+| 触感反馈 | 提交答案对/错触发 `navigator.vibrate` 短/长震动 |
+| 下拉刷新 | 题库管理页顶部下拉 `touchmove` 触发数据刷新 |
+
+**PWA 与更新**
+
+- PWA：`public/manifest.webmanifest` + `public/sw.js` 应用壳缓存，`index.html` 引用，非 Electron 环境注册（主题色对齐品牌绿 `#2f9e6f`）。
+- 自动更新：`electron-updater` 动态导入接入，帮助菜单「检查更新」已可用（见 0.3）。
 
 ---
 

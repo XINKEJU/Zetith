@@ -179,7 +179,7 @@ export default function DailyPage() {
             let cls = 'option-item'
             if (done) {
               const letter = ['A','B','C','D'][d.shuffleMap[idx]]
-              if (letter === result?.correctAnswer) cls += ' correct'
+              if (letter === result?.correctAnswer || opt.text === result?.correctAnswer) cls += ' correct'
               else if (idx === option && !result?.isCorrect) cls += ' wrong'
             } else if (idx === option) cls += ' selected'
             return (

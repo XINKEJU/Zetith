@@ -40,10 +40,10 @@ function detectFieldMap(headers) {
 function normalizeAnswer(answer) {
   if (!answer) return '';
   let a = String(answer).trim().toUpperCase();
-  a = a.replace(/\s+/g, '');
-  if (a === '正确' || a === '对' || a === 'TRUE' || a === 'T') return '正确';
-  if (a === '错误' || a === '错' || a === 'FALSE' || a === 'F') return '错误';
-  return a;
+  if (a === '正确' || a === '对' || a === 'TRUE' || a === 'T' || a === '√' || a === '✔') return '正确';
+  if (a === '错误' || a === '错' || a === 'FALSE' || a === 'F' || a === '×' || a === '✗') return '错误';
+  // 多选题：只保留 A-D 字母，去除所有分隔符与空白，统一格式（如 "A,B"→"AB"、"A、B"→"AB"）
+  return a.replace(/[^A-D]/g, '');
 }
 
 function normalizeDifficulty(d) {
@@ -104,14 +104,30 @@ export function parseExcelFile(arrayBuffer, fileName) {
         continue;
       }
 
+      const qType = normalizeQuestionType(mapped.question_type);
+      const isJudge = qType === '判断题';
+      let answer = normalizeAnswer(mapped.answer || '');
+      // 判断题答案统一为「正确」/「错误」（兼容 A/B、对/错、T/F 等写法）
+      if (isJudge) {
+        const up = answer.toUpperCase();
+        answer = (up === '正确' || up === 'A' || up === 'T') ? '正确' : '错误';
+      }
+      let option_a = String(mapped.option_a || '').trim();
+      let option_b = String(mapped.option_b || '').trim();
+      // 判断题若无选项则自动填充「正确」/「错误」，保证可正常作答
+      if (isJudge) {
+        if (!option_a) option_a = '正确';
+        if (!option_b) option_b = '错误';
+      }
+
       questions.push({
-        question_type: normalizeQuestionType(mapped.question_type),
+        question_type: qType,
         stem: String(stem).trim(),
-        option_a: String(mapped.option_a || '').trim(),
-        option_b: String(mapped.option_b || '').trim(),
+        option_a,
+        option_b,
         option_c: String(mapped.option_c || '').trim(),
         option_d: String(mapped.option_d || '').trim(),
-        answer: normalizeAnswer(mapped.answer || ''),
+        answer,
         explanation: String(mapped.explanation || '').trim(),
         difficulty: normalizeDifficulty(mapped.difficulty),
         tags: String(mapped.tags || '').trim()

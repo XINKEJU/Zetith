@@ -33,34 +33,53 @@ export function getShuffledOptionLetters(shuffledIndices) {
 }
 
 export function prepareQuestionForDisplay(question, optionShuffle = true) {
-  const options = [
-    { key: 'A', text: question.option_a },
-    { key: 'B', text: question.option_b },
-    { key: 'C', text: question.option_c },
-    { key: 'D', text: question.option_d }
-  ];
+  const options = question.question_type === '判断题'
+    ? [
+        { key: 'A', text: question.option_a },
+        { key: 'B', text: question.option_b }
+      ]
+    : [
+        { key: 'A', text: question.option_a },
+        { key: 'B', text: question.option_b },
+        { key: 'C', text: question.option_c },
+        { key: 'D', text: question.option_d }
+      ];
 
+  const n = options.length;
   if (optionShuffle) {
-    const shuffleIndices = shuffleOptions();
-    const shuffledOptions = shuffleIndices.map(i => options[i]);
+    const indices = [...Array(n).keys()];
+    for (let i = n - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
     return {
       ...question,
-      displayOptions: shuffledOptions,
-      shuffleMap: shuffleIndices
+      displayOptions: indices.map(i => options[i]),
+      shuffleMap: indices
     };
   }
 
   return {
     ...question,
     displayOptions: options,
-    shuffleMap: [0, 1, 2, 3]
+    shuffleMap: [...Array(n).keys()]
   };
 }
 
 export function checkAnswer(question, userAnswer, shuffleMap) {
   const correctAnswer = question.answer.toUpperCase().trim();
-  let userAnswerNormalized = '';
 
+  // 判断题：选项文本即为「正确」/「错误」，直接比较文本而非字母
+  if (question.question_type === '判断题') {
+    const letters = ['A', 'B', 'C', 'D'];
+    const selectedIdx = Array.isArray(userAnswer) ? userAnswer[0] : userAnswer;
+    const options = [question.option_a, question.option_b, question.option_c, question.option_d];
+    const selectedText = String(options[shuffleMap[selectedIdx]] || '').trim().toUpperCase();
+    const isCorrect = selectedText === correctAnswer;
+    return { isCorrect, userAnswer: selectedText, correctAnswer };
+  }
+
+  let userAnswerNormalized = '';
   if (Array.isArray(userAnswer)) {
     // Multiple choice
     const mappedAnswers = userAnswer.map(idx => {

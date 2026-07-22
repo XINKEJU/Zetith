@@ -54,7 +54,7 @@ export default function ExamPage() {
     setFinished(true)
     clearTimeout(timerRef.current)
     const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000)
-    const correctCount = results.filter(r => r.isCorrect).length
+    const correctCount = results.filter(r => r && r.isCorrect).length
     saveSession({
       type: 'exam', categoryId: parseInt(selectedCategory) || null, total: questions.length,
       correct: correctCount, timeSpent: elapsed,
@@ -339,7 +339,7 @@ export default function ExamPage() {
             if (submitted) {
               const letters = ['A', 'B', 'C', 'D']
               const orig = letters[currentD.shuffleMap[idx]]
-              if (orig === answerResult?.correctAnswer) cls += ' correct'
+              if (orig === answerResult?.correctAnswer || opt.text === answerResult?.correctAnswer) cls += ' correct'
               else if (idx === selectedOption && !answerResult?.isCorrect) cls += ' wrong'
             } else if (idx === selectedOption) cls += ' selected'
             return (

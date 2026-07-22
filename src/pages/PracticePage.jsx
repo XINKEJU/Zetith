@@ -72,7 +72,12 @@ export default function PracticePage() {
     setResult(r)
     setDone(true)
     saveStudyRecord(questions[index].id, questions[index].category_id, r.isCorrect, r.userAnswer, 0)
-    setResults(prev => [...prev, { correct: r.isCorrect }])
+    // 覆盖式写入，避免「上一题」返回后重复提交导致结果被重复计入
+    setResults(prev => {
+      const next = [...prev]
+      next[index] = { correct: r.isCorrect }
+      return next
+    })
     r.isCorrect ? playCorrect() : playIncorrect()
   }, [option, questions, index, displays])
 
@@ -101,7 +106,7 @@ export default function PracticePage() {
     }
   }
 
-  const correct = useMemo(() => results.filter(r => r.correct).length, [results])
+  const correct = useMemo(() => results.filter(r => r && r.correct).length, [results])
   const elapsed = useMemo(() =>
     startedAt.current ? Math.round((Date.now() - startedAt.current) / 1000) : 0,
     [phase]
@@ -269,7 +274,7 @@ export default function PracticePage() {
             let cls = 'option-item'
             if (done) {
               const letter = ['A','B','C','D'][d.shuffleMap[idx]]
-              if (letter === result?.correctAnswer) cls += ' correct'
+              if (letter === result?.correctAnswer || opt.text === result?.correctAnswer) cls += ' correct'
               else if (idx === option && !result?.isCorrect) cls += ' wrong'
             } else if (idx === option) {
               cls += ' selected'

@@ -75,7 +75,7 @@ export default function WrongBookPage() {
               if (submitted) {
                 const letters = ['A', 'B', 'C', 'D']
                 const originalLetter = letters[displayQuestion.shuffleMap[idx]]
-                if (originalLetter === answerResult?.correctAnswer) {
+                if (originalLetter === answerResult?.correctAnswer || opt.text === answerResult?.correctAnswer) {
                   optionClass += ' correct'
                 } else if (idx === selectedOption && !answerResult?.isCorrect) {
                   optionClass += ' wrong'

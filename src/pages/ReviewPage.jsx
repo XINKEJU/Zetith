@@ -162,7 +162,7 @@ export default function ReviewPage() {
               if (submitted) {
                 const letters = ['A', 'B', 'C', 'D']
                 const orig = letters[currentD.shuffleMap[idx]]
-                if (orig === answerResult?.correctAnswer) cls += ' correct'
+                if (orig === answerResult?.correctAnswer || opt.text === answerResult?.correctAnswer) cls += ' correct'
                 else if (idx === selectedOption && !answerResult?.isCorrect) cls += ' wrong'
               } else if (idx === selectedOption) cls += ' selected'
               return (

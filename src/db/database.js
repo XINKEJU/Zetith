@@ -498,7 +498,8 @@ export function addToReviewQueue(questionId, stage = 0, easeFactor = 2.5, interv
   const nextReview = new Date();
   nextReview.setDate(nextReview.getDate() + interval);
   
-  safeRun(`INSERT OR REPLACE INTO review_state
+  // 仅当题目尚未在复习队列中时插入，保留已有的复习进度，避免被重置
+  safeRun(`INSERT OR IGNORE INTO review_state
     (question_id, stage, ease_factor, interval_days, next_review_at, last_reviewed_at)
     VALUES (?, ?, ?, ?, datetime(?, 'localtime'), datetime('now','localtime'))`,
     [questionId, stage, easeFactor, interval, nextReview.toISOString().slice(0, 19)]
@@ -684,12 +685,18 @@ export function exportCategoryToJSON(categoryId) {
 }
 
 export function exportAllToJSON() {
-  const cats = safeExec('SELECT * FROM categories');
-  if (!cats.length) return [];
-  return cats[0].values.map(row => ({
-    id: row[0], name: row[1],
-    questionCount: safeExec('SELECT COUNT(*) FROM questions WHERE category_id = ?', [row[0]])[0].values[0][0]
-  }));
+  const cats = safeExec('SELECT * FROM categories ORDER BY id');
+  if (!cats.length) return { categories: [], questions: [] };
+  const categories = [];
+  const questions = [];
+  for (const row of cats[0].values) {
+    const id = row[0];
+    const catQuestions = safeExec('SELECT * FROM questions WHERE category_id = ?', [id]);
+    const qs = catQuestions.length ? catQuestions[0].values.map(mapQuestionRow) : [];
+    categories.push({ id, name: row[1], description: row[2], questionCount: qs.length });
+    questions.push(...qs);
+  }
+  return { categories, questions };
 }
 
 // ======= 题型统计 =======
@@ -709,22 +716,33 @@ export function getStreak() {
     ORDER BY day DESC
   `);
   if (!result.length) return { streak: 0, todayDone: false };
-  
-  const dates = result[0].values.map(r => r[0]);
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  
-  let streak = 0;
-  if (dates[0] === today) streak = 1;
-  else if (dates[0] !== yesterday) return { streak: 0, todayDone: false };
-  
-  for (let i = streak; i < dates.length; i++) {
-    const expected = new Date(Date.now() - (i + 1) * 86400000).toISOString().slice(0, 10);
-    if (dates[i] === expected) streak++;
-    else break;
+
+  const dates = result[0].values.map(r => r[0]); // 'YYYY-MM-DD' 降序
+  // 用本地日期（与数据库 localtime 存储保持一致），避免 UTC 偏差
+  const localDateStr = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  const today = new Date();
+  const todayStr = localDateStr(today);
+  const yesterdayStr = localDateStr(new Date(today.getTime() - 86400000));
+
+  // 最近学习日既不是今天也不是昨天 → 连续已中断
+  if (dates[0] !== todayStr && dates[0] !== yesterdayStr) {
+    return { streak: 0, todayDone: false };
   }
-  
-  return { streak, todayDone: dates[0] === today };
+
+  const dateSet = new Set(dates);
+  let streak = 0;
+  // 从今天或昨天开始向前递推连续天数
+  let cursor = dates[0] === todayStr ? today : new Date(today.getTime() - 86400000);
+  while (dateSet.has(localDateStr(cursor))) {
+    streak++;
+    cursor = new Date(cursor.getTime() - 86400000);
+  }
+  return { streak, todayDone: dates[0] === todayStr };
 }
 
 // ======= 今日答题数 =======
@@ -947,12 +965,11 @@ export async function clearAllData() {
 
 // ======= 练习/考试会话 =======
 export function saveSession({ type, categoryId, total, correct, timeSpent, score, items }) {
-  const result = safeExec(
+  safeRun(
     'INSERT INTO sessions (type, category_id, total, correct, time_spent, score, finished_at) VALUES (?,?,?,?,?,?, datetime(\'now\',\'localtime\'))',
     [type, categoryId || null, total, correct, timeSpent, score]
   );
-  if (!result.length) return null;
-  const sessionId = result[0]?.values?.[0]?.[0];
+  const sessionId = safeExec('SELECT last_insert_rowid()')[0]?.values?.[0]?.[0];
   if (sessionId && items) {
     for (const item of items) {
       safeRun('INSERT INTO session_items (session_id, question_id, is_correct, answer_given, time_spent) VALUES (?,?,?,?,?)',

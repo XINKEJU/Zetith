@@ -10,3 +10,12 @@ contextBridge.exposeInMainWorld('electronEnv', {
   isElectron: true,
   platform: process.platform
 })
+
+// 监听主进程转发来的菜单动作（导航 / 触发功能）
+contextBridge.exposeInMainWorld('electronAPI', {
+  onMenu: (callback) => {
+    const handler = (event, payload) => callback(payload)
+    ipcRenderer.on('app:menu', handler)
+    return () => ipcRenderer.removeListener('app:menu', handler)
+  }
+})

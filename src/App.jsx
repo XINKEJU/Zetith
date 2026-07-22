@@ -1,5 +1,5 @@
-import React, { Suspense, lazy } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import React, { Suspense, lazy, useEffect } from 'react'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { AppProvider } from './context/AppContext'
 import { ToastProvider } from './components/ToastProvider'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -31,6 +31,25 @@ function PageLoader() {
 }
 
 export default function App() {
+  const navigate = useNavigate()
+
+  // 监听桌面端菜单栏动作，导航到对应页面或触发功能
+  useEffect(() => {
+    if (!window.electronAPI?.onMenu) return
+    const off = window.electronAPI.onMenu((payload) => {
+      if (!payload) return
+      if (payload.type === 'navigate') {
+        navigate(payload.path || '/')
+      } else if (payload.type === 'action') {
+        // 记下待处理动作，待题库管理页挂载后消费；同时派发事件供已在该页时即时响应
+        window.__pendingMenuAction = payload.name
+        window.dispatchEvent(new CustomEvent('app:' + payload.name))
+        navigate('/categories')
+      }
+    })
+    return off
+  }, [navigate])
+
   return (
     <AppProvider>
       <ToastProvider>

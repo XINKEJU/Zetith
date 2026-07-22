@@ -170,10 +170,10 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null })
 }
 
-// 中文本地化的 macOS 应用菜单
+// 知题软件专属的 macOS 应用菜单（替换 Electron 默认模板）
 function buildMenu() {
   const isMac = process.platform === 'darwin'
-  const appName = app.name
+  const appName = app.name || '知题'
 
   const template = [
     // 应用主菜单（仅 macOS）
@@ -183,8 +183,6 @@ function buildMenu() {
           submenu: [
             { role: 'about', label: `关于${appName}` },
             { type: 'separator' },
-            { role: 'services', label: '服务' },
-            { type: 'separator' },
             { role: 'hide', label: `隐藏${appName}` },
             { role: 'hideOthers', label: '隐藏其他' },
             { role: 'unhide', label: '显示全部' },
@@ -193,6 +191,30 @@ function buildMenu() {
           ]
         }]
       : []),
+    // 学习
+    {
+      label: '学习',
+      submenu: [
+        { label: '开始练习', click: () => sendMenu({ type: 'navigate', path: '/practice' }) },
+        { label: '模拟考试', click: () => sendMenu({ type: 'navigate', path: '/exam' }) },
+        { label: '背题模式', click: () => sendMenu({ type: 'navigate', path: '/cards' }) },
+        { label: '每日一练', click: () => sendMenu({ type: 'navigate', path: '/daily' }) },
+        { type: 'separator' },
+        { label: '错题本', click: () => sendMenu({ type: 'navigate', path: '/wrongbook' }) },
+        { label: '收藏夹', click: () => sendMenu({ type: 'navigate', path: '/favorites' }) },
+        { label: '学习统计', click: () => sendMenu({ type: 'navigate', path: '/stats' }) }
+      ]
+    },
+    // 题库
+    {
+      label: '题库',
+      submenu: [
+        { label: '导入题库', click: () => sendMenu({ type: 'action', name: 'import' }) },
+        { label: '导出题库', click: () => sendMenu({ type: 'action', name: 'export' }) },
+        { type: 'separator' },
+        { label: '题库管理', click: () => sendMenu({ type: 'navigate', path: '/categories' }) }
+      ]
+    },
     // 编辑
     {
       label: '编辑',
@@ -240,9 +262,7 @@ function buildMenu() {
         ...(isMac
           ? [
               { type: 'separator' },
-              { role: 'front', label: '前置全部窗口' },
-              { type: 'separator' },
-              { role: 'window', label: appName }
+              { role: 'front', label: '前置全部窗口' }
             ]
           : [{ role: 'close', label: '关闭' }])
       ]
@@ -255,7 +275,7 @@ function buildMenu() {
         {
           label: '访问项目主页',
           click: async () => {
-            await shell.openExternal('https://github.com')
+            await shell.openExternal('https://github.com/XINKEJU/Zetith')
           }
         }
       ]
@@ -263,6 +283,13 @@ function buildMenu() {
   ]
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+// 把菜单动作转发给渲染进程（前端根据动作导航或触发功能）
+function sendMenu(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('app:menu', payload)
+  }
 }
 
 app.whenReady().then(async () => {

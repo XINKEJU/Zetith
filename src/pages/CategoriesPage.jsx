@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react'
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useToast } from '../components/ToastProvider'
@@ -17,6 +17,24 @@ export default function CategoriesPage() {
   const [importResults, setImportResults] = useState(null)
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef(null)
+
+  // 响应桌面端菜单栏「导入题库 / 导出题库」动作
+  useEffect(() => {
+    const doImport = () => fileInputRef.current?.click()
+    const doExport = () => handleExportAll()
+    const onImport = () => doImport()
+    const onExport = () => doExport()
+    window.addEventListener('app:import', onImport)
+    window.addEventListener('app:export', onExport)
+    // 消费从其他页面经菜单触发的待处理动作
+    const pending = window.__pendingMenuAction
+    if (pending === 'import') { window.__pendingMenuAction = null; doImport() }
+    else if (pending === 'export') { window.__pendingMenuAction = null; doExport() }
+    return () => {
+      window.removeEventListener('app:import', onImport)
+      window.removeEventListener('app:export', onExport)
+    }
+  }, [])
 
   const categoryProgress = useMemo(() => {
     const progress = {}

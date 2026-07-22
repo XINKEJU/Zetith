@@ -351,6 +351,21 @@ app.whenReady().then(async () => {
     }
   })
 
+  // WebDAV 代理：坚果云等同步后端在渲染进程会被浏览器 CORS 拦截，
+  // 改由主进程（Node）发起请求，主进程 fetch 不受跨域限制。
+  // 仅转发 method/url/headers/body，返回原始响应文本与状态码。
+  ipcMain.handle('webdav:request', async (event, { method, url, headers, body }) => {
+    try {
+      const init = { method: method || 'GET', headers: headers || {} }
+      if (body !== undefined && body !== null) init.body = body
+      const res = await fetch(url, init)
+      const text = await res.text()
+      return { ok: res.ok, status: res.status, statusText: res.statusText, body: text }
+    } catch (e) {
+      return { ok: false, status: 0, statusText: String((e && e.message) || e), body: '' }
+    }
+  })
+
   // 系统外观变化广播给渲染端（渲染端在「跟随系统」模式下自动切换深浅色）
   nativeTheme.on('updated', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {

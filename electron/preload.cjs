@@ -27,5 +27,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('theme:system', handler)
   },
   // 答题进度上报（macOS Dock 进度条）：ratio 0~1 显示，-1 移除
-  reportProgress: (ratio) => ipcRenderer.invoke('app:progress', ratio)
+  reportProgress: (ratio) => ipcRenderer.invoke('app:progress', ratio),
+  // WebDAV 代理：主进程代为发起请求，绕过渲染进程 CORS 限制（坚果云同步用）
+  webdavRequest: (opts) => ipcRenderer.invoke('webdav:request', opts)
 })

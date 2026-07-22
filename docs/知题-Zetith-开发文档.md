@@ -118,11 +118,15 @@ tiku-app/
 - PWA：`public/manifest.webmanifest` + `public/sw.js` 应用壳缓存，`index.html` 引用，非 Electron 环境注册（主题色对齐品牌绿 `#2f9e6f`）。
 - 自动更新：`electron-updater` 动态导入接入，帮助菜单「检查更新」已可用（见 0.3）。
 
-**数据同步（零服务器方案）**
+**数据同步（零服务器方案，可插拔后端）**
 
-- 复用用户 GitHub 账号：账号 = GitHub 登录，存储 = 一个私有 Gist；Token 仅需 `gist` 作用域。
-- `src/services/githubSync.js`：Gist 后端（push/pull/getUser），Token 与 gistId 存 localStorage。
-- `src/services/syncService.js`：`exportUserData()` 仅导出 `review_state` / `notes` / `bookmarks`（按 question_id 为键，体积小）；`importUserData()` 以最后写入优先（LWW）合并远端，不删除本地独有记录。
+- 支持两种后端，在 `SyncSetup` 顶部切换，选择存于 `localStorage.zetith_sync_backend`：
+  - **GitHub**：复用 GitHub 账号，存储 = 私有 Gist，Token 仅需 `gist` 作用域；因 GitHub API 返回 CORS 头，手机网页也可用。
+  - **坚果云 WebDAV**：复用坚果云账号，存储 = `知题/zetith-sync.json`；因 WebDAV 不返回 CORS 头，**仅桌面端（Electron）可用**，由主进程代为请求。
+- `src/services/githubSync.js`：Gist 后端（push/pull/fetchUser），Token 与 gistId 存 localStorage（渲染进程直连，依赖 CORS 头）。
+- `src/services/webdavSync.js`：WebDAV 后端（push/pull/fetchUser/ensureDir），通过 `window.electronAPI.webdavRequest` 走主进程代理，绕过 CORS；`isSupported()` 仅在桌面端为真。
+- `electron/main.js` 新增 `ipcMain.handle('webdav:request')`，在 Node 主进程用 `fetch` 转发 WebDAV 请求（不受 CORS 限制）；`electron/preload.cjs` 暴露 `electronAPI.webdavRequest` 转发 IPC。
+- `src/services/syncService.js`：`syncNow(pushFn, pullFn)` 将后端抽象为函数——先 pull 远端并合并进本地，再 push 合并结果；`exportUserData()` 仅导出 `review_state` / `notes` / `bookmarks`（按 question_id 为键，体积小）；`importUserData()` 以最后写入优先（LWW）合并远端，不删除本地独有记录。
 - 不同步题库本身（体积大）；前提是各设备导入相同题库使 question_id 对齐。
 
 ---

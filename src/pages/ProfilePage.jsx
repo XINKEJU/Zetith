@@ -4,7 +4,7 @@ import { useToast } from '../components/ToastProvider'
 import { useApp } from '../context/AppContext'
 import * as account from '../services/account'
 import * as supabaseSync from '../services/supabaseSync'
-import { getDatabase } from '../db/database'
+import { getDatabase, getReminderPrefs, saveReminderPrefs } from '../db/database'
 import { mapAuthError } from '../services/authErrors'
 
 const LS_LAST = 'zetith_last_sync'
@@ -54,6 +54,8 @@ export default function ProfilePage() {
   const [lastSync, setLastSync] = useState(localStorage.getItem(LS_LAST) || '')
   const [showGuide, setShowGuide] = useState(false)
   const [themeSource, setThemeSource] = useState(() => localStorage.getItem('themeSource') || 'system')
+  const [reminderOn, setReminderOn] = useState(false)
+  const [reminderTime, setReminderTime] = useState('20:00')
   const [overview, setOverview] = useState({ favorites: 0, today: 0, streak: 0 })
 
   // 初始化会话
@@ -115,6 +117,13 @@ export default function ProfilePage() {
     const onTheme = (e) => setThemeSource(e.detail || 'system')
     window.addEventListener('app:theme-system', onTheme)
     return () => window.removeEventListener('app:theme-system', onTheme)
+  }, [])
+
+  // 学习提醒偏好初始化
+  useEffect(() => {
+    const prefs = getReminderPrefs()
+    setReminderOn(prefs.enabled)
+    setReminderTime(prefs.time || '20:00')
   }, [])
 
   const handleLogin = async () => {
@@ -198,6 +207,17 @@ export default function ProfilePage() {
     localStorage.setItem('themeSource', src)
     setThemeSource(src)
     window.dispatchEvent(new CustomEvent('app:theme-system', { detail: src }))
+  }
+
+  const saveReminder = () => {
+    saveReminderPrefs({ enabled: reminderOn, time: reminderTime })
+    if (reminderOn) {
+      if ('Notification' in window) {
+        Notification.requestPermission().then(() => addToast('学习提醒已开启', 'success'))
+      }
+    } else {
+      addToast('学习提醒已关闭', 'info')
+    }
   }
 
   const openSupabase = () => {
@@ -373,6 +393,27 @@ export default function ProfilePage() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* 学习提醒 */}
+        <div className="card">
+          <h3 className="pc-section-title">学习提醒</h3>
+          <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0 12px' }}>
+            <input type="checkbox" checked={reminderOn} onChange={e => setReminderOn(e.target.checked)} />
+            开启每日学习提醒
+          </label>
+          {reminderOn && (
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>提醒时间</label>
+              <input type="time" value={reminderTime} onChange={e => setReminderTime(e.target.value)} />
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                每日定时推送学习提醒，需要浏览器通知权限
+              </p>
+            </div>
+          )}
+          <button className="btn btn-primary" onClick={saveReminder} style={{ width: '100%' }}>
+            保存
+          </button>
         </div>
 
         {/* 快捷入口 */}

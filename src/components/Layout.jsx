@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import SearchModal from './SearchModal'
 import ShortcutPanel from './ShortcutPanel'
-import ReminderSetup from './ReminderSetup'
 import * as account from '../services/account'
 import * as supabaseSync from '../services/supabaseSync'
 import { useToast } from './ToastProvider'
@@ -35,7 +34,6 @@ export default function Layout({ children }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true')
   const [showSearch, setShowSearch] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
-  const [showReminder, setShowReminder] = useState(false)
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const { addToast } = useToast()
   const [showDrop, setShowDrop] = useState(false)
@@ -230,7 +228,6 @@ export default function Layout({ children }) {
         if (e.key === 't' || e.key === 'T') { e.preventDefault(); toggleTheme() }
         if (e.key === 'k' || e.key === 'K') { e.preventDefault(); setShowSearch(true) }
         if (e.key === 'h' || e.key === 'H') { e.preventDefault(); navigate('/history') }
-        if (e.key === 'r' || e.key === 'R') { e.preventDefault(); setShowReminder(true) }
       } else if (e.key === '?') {
         e.preventDefault()
         setShowShortcuts(true)
@@ -328,33 +325,6 @@ export default function Layout({ children }) {
             )}
             <span className="sidebar-text">个人中心</span>
           </button>
-          <button className="nav-item" onClick={() => setShowReminder(true)} style={{ width: '100%' }} title={collapsed ? '学习提醒' : undefined}>
-            <span className="nav-dot" />
-            {collapsed && (
-              <svg className="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"
-                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 13V8C14 5.79 12.21 4 10 4C7.79 4 6 5.79 6 8V13L4 15H16L14 13Z" />
-                <path d="M9 17H11" />
-              </svg>
-            )}
-            <span className="sidebar-text">学习提醒</span>
-            <span className="nav-shortcut sidebar-text">⌘R</span>
-          </button>
-          <button className="nav-item" onClick={() => toggleTheme()} style={{ width: '100%' }} title={collapsed ? (darkMode ? '浅色模式' : '深色模式') : undefined}>
-            <span className="nav-dot" style={{ background: darkMode ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.3)' }} />
-            {collapsed && (
-              <svg className="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"
-                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                {darkMode ? (
-                  <path d="M16 14.18A6 6 0 0 1 5.82 4 8 8 0 1 0 16 14.18z" />
-                ) : (
-                  <><circle cx="10" cy="10" r="4" /><path d="M10 2V3" /><path d="M10 17V18" /><path d="M3.5 3.5L4.5 4.5" /><path d="M15.5 15.5L16.5 16.5" /><path d="M2 10H3" /><path d="M17 10H18" /><path d="M3.5 16.5L4.5 15.5" /><path d="M15.5 4.5L16.5 3.5" /></>
-                )}
-              </svg>
-            )}
-            <span className="sidebar-text">{darkMode ? '深色模式' : '浅色模式'}</span>
-            <span className="nav-shortcut sidebar-text">⌘T</span>
-          </button>
         </div>
       </aside>
 
@@ -435,7 +405,6 @@ export default function Layout({ children }) {
 
       {showSearch && <SearchModal onClose={() => setShowSearch(false)} />}
       {showShortcuts && <ShortcutPanel onClose={() => setShowShortcuts(false)} />}
-      {showReminder && <ReminderSetup onClose={() => setShowReminder(false)} />}
     </div>
   )
 }

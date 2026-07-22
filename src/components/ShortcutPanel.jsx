@@ -4,7 +4,6 @@ const shortcuts = [
   { keys: ['⌘', '1-9,0'], desc: '页面导航' },
   { keys: ['⌘', 'K'], desc: '搜索题目' },
   { keys: ['⌘', 'T'], desc: '切换深色/浅色模式' },
-  { keys: ['⌘', 'R'], desc: '学习提醒' },
   { keys: ['⌘', 'H'], desc: '练习历史' },
   { keys: ['?'], desc: '显示快捷键面板' },
   { keys: ['←', '→'], desc: '上一题 / 下一题' },

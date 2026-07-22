@@ -336,21 +336,19 @@ async function runTick() {
   ticking = true
   emitStatus('syncing')
   try {
-    const pushed = await pushToSupabase()
-    const pulled = await pullFromSupabase()
-    dirty = false
-    if (pushed.pushed === 0 && pulled.merged === 0) emitStatus('idle')
-    else emitStatus('synced', `已同步（上传 ${pushed.pushed} · 下载 ${pulled.merged}）`)
+    // 同步期间若又产生本地改动，循环再跑一轮补齐增量（以循环替代递归，避免调用栈增长）
+    do {
+      dirty = false
+      const pushed = await pushToSupabase()
+      const pulled = await pullFromSupabase()
+      if (pushed.pushed === 0 && pulled.merged === 0) emitStatus('idle')
+      else emitStatus('synced', `已同步（上传 ${pushed.pushed} · 下载 ${pulled.merged}）`)
+    } while (dirty)
   } catch (e) {
     // 网络/离线等异常只更新状态，不向上抛出，避免打断用户
     emitStatus('error', e?.message || String(e))
   } finally {
     ticking = false
-  }
-  // 同步期间又产生了本地改动，立刻再跑一轮把增量补齐
-  if (dirty) {
-    dirty = false
-    runTick()
   }
 }
 

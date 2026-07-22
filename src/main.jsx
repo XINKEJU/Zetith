@@ -70,7 +70,7 @@ function setupReminder() {
 
 setupReminder()
 
-// Disable text selection, drag and context menu outside editable fields
+// 仅禁用右键菜单与拖拽（防止内容被拖出），允许正常选中/复制文本，兼顾可访问性
 function disableSelectionCopy() {
   const allowlisted = (target) => {
     if (!target) return false
@@ -84,10 +84,7 @@ function disableSelectionCopy() {
   }
 
   document.addEventListener('contextmenu', prevent, { capture: true })
-  document.addEventListener('selectstart', prevent, { capture: true })
   document.addEventListener('dragstart', prevent, { capture: true })
-  document.addEventListener('copy', prevent, { capture: true })
-  document.addEventListener('cut', prevent, { capture: true })
 }
 
 disableSelectionCopy()

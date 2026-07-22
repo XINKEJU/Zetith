@@ -1,4 +1,4 @@
-import { getQuestionsByCategory, getRandomQuestions } from '../db/database';
+import { getQuestionsByCategory, getRandomQuestions, getQuestionCount } from '../db/database';
 
 // Shuffle array using Fisher-Yates
 export function shuffleArray(arr) {
@@ -80,7 +80,7 @@ export function checkAnswer(question, userAnswer, shuffleMap) {
 }
 
 export function getQuestionsForPractice(categoryId, count = 20) {
-  const total = getQuestionsByCategory(categoryId).length;
+  const total = getQuestionCount(categoryId);
   if (total <= count) {
     return shuffleArray(getQuestionsByCategory(categoryId));
   }

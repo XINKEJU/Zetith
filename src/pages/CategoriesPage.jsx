@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useToast } from '../components/ToastProvider'
-import { importFromFiles, parseExcelFile } from '../services/importService'
+// xlsx 改为运行时动态导入（避免 7MB 库进入首屏包）
 import { deleteCategory, getCategoryProgress, clearAllData, removeDuplicatesInCategory, exportAllToJSON, exportCategoryToJSON, backupDatabase, restoreDatabase } from '../db/database'
 import { exportCategoryToDocx } from '../services/exportService'
 
@@ -49,6 +49,7 @@ export default function CategoriesPage() {
     
     setPreviewFiles(files)
     try {
+      const { parseExcelFile } = await import('../services/importService')
       const firstFile = files[0]
       const arrayBuffer = await firstFile.arrayBuffer()
       const parsed = parseExcelFile(arrayBuffer, firstFile.name)
@@ -74,6 +75,7 @@ export default function CategoriesPage() {
     setImporting(true)
     setImportResults(null)
     try {
+      const { importFromFiles } = await import('../services/importService')
       const result = await importFromFiles(previewFiles)
       setImportResults(result)
       await persistAndRefresh().catch(() => {})

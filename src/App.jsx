@@ -14,6 +14,7 @@ const ExamPage = lazy(() => import('./pages/ExamPage'))
 const WrongBookPage = lazy(() => import('./pages/WrongBookPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
 const ReviewPage = lazy(() => import('./pages/ReviewPage'))
+const SmartStudyPage = lazy(() => import('./pages/SmartStudyPage'))
 const FavoritesPage = lazy(() => import('./pages/FavoritesPage'))
 const CardStudyPage = lazy(() => import('./pages/CardStudyPage'))
 const DailyPage = lazy(() => import('./pages/DailyPage'))
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/practice" element={<PracticePage />} />
           <Route path="/exam" element={<ExamPage />} />
           <Route path="/review" element={<ReviewPage />} />
+          <Route path="/smart" element={<SmartStudyPage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/wrongbook" element={<WrongBookPage />} />
           <Route path="/favorites" element={<FavoritesPage />} />

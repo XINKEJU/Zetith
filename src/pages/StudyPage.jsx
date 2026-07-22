@@ -4,6 +4,7 @@ import { getQuestionsByCategory, getCategoryById, toggleBookmark, isBookmarked, 
 import { shuffleArray, prepareQuestionForDisplay } from '../services/studyService'
 import { ensureCategoryQuestions } from '../services/questionBank'
 import { useToast } from '../components/ToastProvider'
+import * as account from '../services/account'
 
 export default function StudyPage() {
   const { categoryId } = useParams()
@@ -81,14 +82,23 @@ export default function StudyPage() {
 
   const handleBookmark = () => {
     if (!currentQuestion) return
+    if (!account.isAuthed()) {
+      account.requireAuth('收藏题目')
+      addToast('请先登录后收藏', 'info', 1500)
+      return
+    }
     const newState = toggleBookmark(currentQuestion.id)
     setBookmarked(newState)
-    const msg = newState ? '已收藏' : '已取消收藏'
-    addToast(msg, 'success', 1500)
+    addToast(newState ? '已收藏' : '已取消收藏', 'success', 1500)
   }
 
   const handleSaveNote = () => {
     if (!currentQuestion) return
+    if (!account.isAuthed()) {
+      account.requireAuth('记笔记')
+      addToast('请先登录后保存笔记', 'info', 1500)
+      return
+    }
     saveNote(currentQuestion.id, note)
     addToast('笔记已保存', 'success', 1500)
   }

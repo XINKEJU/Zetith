@@ -12,3 +12,6 @@ vite.config.js.timestamp-*.mjs
 .env
 .env.local
 .env.*.local
+
+# Supabase CLI 临时目录（含本地缓存，勿提交）
+supabase/.temp/

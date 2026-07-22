@@ -38,6 +38,8 @@ function safeExec(sql, params = []) {
 function safeRun(sql, params = []) {
   if (!db) return;
   try { db.run(sql, params) } catch (e) { if (isDev) console.error('DB run error:', e.message) }
+  // 任何本地写入后 debounce 落盘，避免中途退出丢失进度（C2/C3）
+  schedulePersist();
 }
 function safeGet(result, defaultValue) {
   if (!result || !result.length || !result[0]?.values?.length) return defaultValue
@@ -278,6 +280,7 @@ export async function initDatabase(onProgress) {
   safeRun(`CREATE INDEX IF NOT EXISTS idx_questions_category ON questions(category_id)`);
   safeRun(`CREATE INDEX IF NOT EXISTS idx_records_question ON study_records(question_id)`);
   safeRun(`CREATE INDEX IF NOT EXISTS idx_records_category ON study_records(category_id)`);
+  safeRun(`CREATE INDEX IF NOT EXISTS idx_records_practiced_at ON study_records(practiced_at)`);
 
   await saveDatabase();
   return db;
@@ -289,6 +292,17 @@ export async function saveDatabase() {
   await writeStoredDB(data);
   // 通知同步层（Supabase）：本地数据已落盘，可触发上传
   try { window.dispatchEvent(new Event('zetith:db-saved')); } catch {}
+}
+
+// 写后自动落盘调度：所有经 safeRun 的写入都会触发，1.5s 内合并为一次 saveDatabase。
+// 匿名用户写操作已被 requireAuth 在调用方拦截，不会到达 safeRun，故不受影响。
+let _persistTimer = null
+export function schedulePersist(delay = 1500) {
+  if (_persistTimer) clearTimeout(_persistTimer)
+  _persistTimer = setTimeout(() => {
+    _persistTimer = null
+    saveDatabase().catch(() => {})
+  }, delay)
 }
 
 export function getDatabase() {
@@ -349,6 +363,11 @@ export function getQuestionsByCategory(categoryId, limit = null, offset = 0) {
   const result = safeExec(sql, params);
   if (!result.length) return [];
   return result[0].values.map(mapQuestionRow);
+}
+
+export function getQuestionCount(categoryId) {
+  const r = safeExec('SELECT COUNT(*) FROM questions WHERE category_id = ?', [categoryId]);
+  return safeGet(r, [0])[0] || 0;
 }
 
 export function getQuestionById(id) {
@@ -559,6 +578,127 @@ export function getReviewStats() {
     due: due[0]?.values?.[0]?.[0] || 0,
     mastered: mastered[0]?.values?.[0]?.[0] || 0
   };
+}
+
+// ======= 智能学习：自适应薄弱点 / 复习排程 / 学习洞察 =======
+
+// 自适应薄弱点抽题：优先级 到期复习 > 历史错题(未掌握) > 未练过(薄弱分类) > 随机补足
+export function getAdaptiveQuestions(categoryId = null, count = 20) {
+  const params = categoryId ? [categoryId] : []
+  const cat = categoryId ? 'AND q.category_id = ?' : ''
+  const pool = []
+  const seen = new Set()
+  const push = (rows) => {
+    const vals = rows && rows[0] && rows[0].values ? rows[0].values : []
+    for (const r of vals) { if (r && !seen.has(r[0])) { seen.add(r[0]); pool.push(r) } }
+  }
+
+  // 1) 到期复习题
+  push(safeExec(`SELECT q.* FROM questions q JOIN review_state rs ON rs.question_id = q.id
+    WHERE rs.next_review_at <= datetime('now','localtime') ${cat}`, params))
+  // 2) 历史错题（未掌握）
+  push(safeExec(`SELECT q.* FROM questions q
+    WHERE q.id IN (SELECT DISTINCT question_id FROM study_records WHERE is_correct = 0)
+      AND q.id NOT IN (SELECT question_id FROM review_state WHERE stage >= 5) ${cat}
+    ORDER BY (SELECT COUNT(*) FROM study_records sr WHERE sr.question_id = q.id AND sr.is_correct = 0) DESC`, params))
+  // 3) 未作答过的题（优先来自正确率最低的分类）
+  push(safeExec(`SELECT q.* FROM questions q
+    WHERE q.id NOT IN (SELECT DISTINCT question_id FROM study_records) ${cat}
+    ORDER BY (SELECT COALESCE(AVG(is_correct),0) FROM study_records sr JOIN questions qq ON qq.id = sr.question_id WHERE qq.category_id = q.category_id) ASC
+    LIMIT ?`, [...params, count]))
+  // 4) 补足数量（随机）
+  if (pool.length < count) {
+    const placeholders = seen.size ? [...seen].map(() => '?').join(',') : '-1'
+    const fillParams = seen.size ? [...seen, ...params, count - pool.length] : [...params, count - pool.length]
+    push(safeExec(`SELECT q.* FROM questions q WHERE q.id NOT IN (${placeholders}) ${cat} ORDER BY RANDOM() LIMIT ?`, fillParams))
+  }
+  return pool.slice(0, count).map(mapQuestionRow)
+}
+
+// 历史错题（未掌握，stage<5）列表
+export function getWrongQuestionsNotMastered(categoryId = null, limit = 200) {
+  const params = []
+  const cat = categoryId ? 'AND q.category_id = ?' : ''
+  if (categoryId) params.push(categoryId)
+  const r = safeExec(`SELECT q.*, COUNT(sr.id) as wrong_count
+    FROM questions q
+    JOIN study_records sr ON sr.question_id = q.id AND sr.is_correct = 0
+    WHERE q.id NOT IN (SELECT question_id FROM review_state WHERE stage >= 5) ${cat}
+    GROUP BY q.id ORDER BY wrong_count DESC LIMIT ?`, [...params, limit])
+  if (!r.length || !r[0].values.length) return []
+  return r[0].values.map(row => ({
+    ...mapQuestionRow(row.slice(0, 13)),
+    wrong_count: row[13]
+  }))
+}
+
+// 复习排程：未来 days 天每日到期题量
+export function getReviewSchedule(days = 7) {
+  const r = safeExec(`SELECT date(next_review_at) as day, COUNT(*) as c
+    FROM review_state
+    WHERE next_review_at <= datetime('now','localtime','+${days} days')
+    GROUP BY date(next_review_at) ORDER BY day ASC`)
+  const map = {}
+  if (r.length && r[0].values) for (const row of r[0].values) map[row[0]] = row[1]
+  const out = []
+  const now = new Date()
+  for (let i = 0; i < days; i++) {
+    const d = new Date(now); d.setDate(d.getDate() + i)
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+    out.push({ day: key, due: map[key] || 0, isToday: i === 0 })
+  }
+  return out
+}
+
+// 正确率趋势（最近 days 天，按天聚合）
+export function getAccuracyTrend(days = 14) {
+  const r = safeExec(`SELECT date(practiced_at) as day, COUNT(*) as total, SUM(is_correct) as correct
+    FROM study_records
+    WHERE practiced_at >= datetime('now','localtime','-${days} days')
+    GROUP BY date(practiced_at) ORDER BY day ASC`)
+  if (!r.length || !r[0].values.length) return []
+  return r[0].values.map(row => ({
+    day: row[0],
+    total: row[1] || 0,
+    correct: row[2] || 0,
+    rate: row[1] ? Math.round((row[2] || 0) / row[1] * 100) : 0
+  }))
+}
+
+// 各分类掌握度（正确率 + 已练/总量）
+export function getMasteryByCategory() {
+  const r = safeExec(`SELECT q.category_id,
+      COUNT(sr.id) as attempted, SUM(sr.is_correct) as correct, COUNT(DISTINCT q.id) as total
+    FROM questions q LEFT JOIN study_records sr ON sr.question_id = q.id
+    GROUP BY q.category_id`)
+  const cats = getAllCategories()
+  const nameMap = {}
+  cats.forEach(c => { nameMap[c.id] = c.name })
+  if (!r.length || !r[0].values.length) return []
+  return r[0].values.map(row => ({
+    categoryId: row[0],
+    name: nameMap[row[0]] || '未分类',
+    attempted: row[1] || 0,
+    correct: row[2] || 0,
+    total: row[3] || 0,
+    rate: row[1] ? Math.round((row[2] || 0) / row[1] * 100) : 0
+  })).sort((a, b) => a.rate - b.rate)
+}
+
+// 预测下次表现（基于近 7 天正确率）
+export function getPredictedPerformance() {
+  const trend = getAccuracyTrend(7)
+  if (!trend.length) return { rate: 0, label: '暂无数据', suggestion: '先完成一些练习吧' }
+  const recent = trend.slice(-7)
+  const total = recent.reduce((s, t) => s + t.total, 0)
+  const correct = recent.reduce((s, t) => s + t.correct, 0)
+  const rate = total ? Math.round(correct / total * 100) : 0
+  let label = '稳定发挥', suggestion = '保持节奏，重点攻克薄弱分类'
+  if (rate >= 85) { label = '游刃有余'; suggestion = '可挑战更高难度或提速' }
+  else if (rate >= 70) { label = '稳步提升'; suggestion = '巩固错题，进入间隔复习' }
+  else if (rate >= 50) { label = '尚需努力'; suggestion = '优先重练错题与薄弱点' }
+  else { label = '基础待固'; suggestion = '从概念与基础题重新梳理' }
+  return { rate, label, suggestion }
 }
 
 function mapReviewRow(row) {

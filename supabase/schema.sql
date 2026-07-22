@@ -72,17 +72,18 @@ create table if not exists public.questions (
 
 create index if not exists questions_category_idx on public.questions (category_id);
 
--- 公开只读：任何人（含匿名）可浏览题目与分类；无写策略 → 仅 service_role 可写
+-- 只读策略：仅已登录用户可浏览题目与分类（与「强制登录」模型一致，避免匿名 dump 全库）
+-- 无写策略 → 仅 service_role 可写
 alter table public.categories enable row level security;
 alter table public.questions enable row level security;
 
 drop policy if exists "categories_public_read" on public.categories;
 create policy "categories_public_read"
-  on public.categories for select using (true);
+  on public.categories for select using (auth.uid() is not null);
 
 drop policy if exists "questions_public_read" on public.questions;
 create policy "questions_public_read"
-  on public.questions for select using (true);
+  on public.questions for select using (auth.uid() is not null);
 
 -- 分类题目计数 RPC（供客户端显示每类题量，避免前端拉全表）
 create or replace function public.category_question_counts()

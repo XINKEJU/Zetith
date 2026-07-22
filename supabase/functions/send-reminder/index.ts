@@ -30,10 +30,15 @@ Deno.serve(async (req) => {
     } = await supabase.auth.getUser()
     if (authErr || !user) return json({ error: 'unauthorized' }, 401)
 
-    const { to, name } = await req.json()
+    const { to } = await req.json()
     // 安全：只允许发给当前登录用户自己的邮箱
     if (!to || to !== user.email) return json({ error: 'forbidden' }, 403)
     if (!RESEND_API_KEY) return json({ error: 'email not configured' }, 500)
+    // 昵称取自服务端身份（不信任客户端入参），并做 HTML 转义，防止邮件模板注入
+    const rawName = (user.user_metadata?.nickname || '').toString()
+    const name = rawName.replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ))
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',

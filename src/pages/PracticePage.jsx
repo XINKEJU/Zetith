@@ -1,14 +1,18 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { useToast } from '../components/ToastProvider'
 import { saveStudyRecord, getFilteredRandomQuestions, getAllTags, saveSession } from '../db/database'
 import { prepareQuestionForDisplay, checkAnswer } from '../services/studyService'
 import { playCorrect, playIncorrect, playComplete } from '../services/soundService'
 import { ensureCategoryQuestions } from '../services/questionBank'
+import { getSmartSet, getSmartMeta, clearSmartSet } from '../services/smartStudy'
 
 export default function PracticePage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { categories, persistAndRefresh } = useApp()
+  const { addToast } = useToast()
 
   const [selectedCategoryId, setSelectedCategoryId] = useState('')
   const [questionCount, setQuestionCount] = useState(20)
@@ -125,11 +129,30 @@ export default function PracticePage() {
     }
   }, [qTimeLeft, phase, perQuestionTimer, done, questions.length, submit])
 
-  useEffect(() => () => clearInterval(timerRef.current), [])
+  useEffect(() => () => { clearInterval(timerRef.current); clearSmartSet() }, [])
+
+  // 智能练习入口：从「智能中心」传入的题目集直接开练，跳过设置页
+  useEffect(() => {
+    if (searchParams.get('smart') !== '1') return
+    const qs = getSmartSet()
+    const meta = getSmartMeta()
+    if (meta?.categoryId) setSelectedCategoryId(String(meta.categoryId))
+    if (qs && qs.length) {
+      const ds = qs.map(q => prepareQuestionForDisplay(q, optionShuffle))
+      setQuestions(qs); setDisplays(ds); setIndex(0); setOption(null); setDone(false); setResult(null); setResults([])
+      startedAt.current = Date.now()
+      setPhase('practice')
+    } else {
+      addToast('智能题目集为空，请重新选择', 'warning')
+      navigate('/smart', { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const next = () => {
     clearInterval(timerRef.current)
     if (index + 1 >= questions.length) {
+      clearSmartSet()
       setPhase('finished')
       const elapsed = Math.round((Date.now() - startedAt.current) / 1000)
       saveSession({ type: 'practice', categoryId: selectedCategoryId ? +selectedCategoryId : null, total: questions.length, correct, timeSpent: elapsed, score: questions.length > 0 ? Math.round((correct / questions.length) * 100) : 0, items: results.map((r, i) => ({ questionId: questions[i]?.id, isCorrect: r.correct })) })

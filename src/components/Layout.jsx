@@ -6,7 +6,7 @@ import ShortcutPanel from './ShortcutPanel'
 import * as account from '../services/account'
 import * as supabaseSync from '../services/supabaseSync'
 import { useToast } from './ToastProvider'
-import { importFromFiles } from '../services/importService'
+// xlsx 改为运行时动态导入（避免 7MB 库进入首屏包），见 handleDrop 调用处
 
 const navItems = [
   { path: '/', label: '首页', key: '1', icon: <path d="M3 8L10 2L17 8V19H13V13H7V19H3V8Z" /> },
@@ -16,6 +16,7 @@ const navItems = [
   { path: '/cards', label: '背题模式', key: '5', icon: <><rect x="3" y="3" width="14" height="15" rx="2" /><rect x="7" y="7" width="6" height="7" rx="1" /></> },
   { path: '/exam', label: '模拟考试', key: '6', icon: <><circle cx="10" cy="10" r="8" /><path d="M10 5V10L13 13" /></> },
   { path: '/review', label: '智能复习', key: '7', icon: <><path d="M3 10C3 5 7 2 12 2C17 2 20 6 20 10C20 15 16 18 12 18" /><path d="M3 10L7 6" /><path d="M3 10L7 14" /></> },
+  { path: '/smart', label: '智能练习', key: 'u', icon: <><path d="M9 18h6" /><path d="M10 21h4" /><path d="M12 2a6 6 0 00-3.5 10.9c.5.4.9 1 .9 1.6V15h5.2v-.5c0-.6.4-1.2.9-1.6A6 6 0 0012 2z" /></> },
   { path: '/wrongbook', label: '错题本', key: '8', icon: <><path d="M10 2L2 20H18L10 2Z" /><path d="M10 9V13" /><circle cx="10" cy="16" r="1" /></> },
   { path: '/favorites', label: '收藏夹', key: '9', icon: <path d="M10 2L12.5 8.5L19 9L14 13.5L15.5 20L10 16.5L4.5 20L6 13.5L1 9L7.5 8.5L10 2Z" /> },
   { path: '/stats', label: '学习统计', key: '0', icon: <><path d="M3 19H19" /><rect x="4" y="10" width="3" height="9" rx="1" /><rect x="9" y="6" width="3" height="13" rx="1" /><rect x="14" y="12" width="3" height="7" rx="1" /></> },
@@ -163,6 +164,7 @@ export default function Layout({ children }) {
         return
       }
       try {
+        const { importFromFiles } = await import('../services/importService')
         const res = await importFromFiles(files)
         if (res.totalImported > 0) {
           addToast(`成功导入 ${res.totalImported} 道题${res.totalErrors ? `，${res.totalErrors} 个文件失败` : ''}`, 'success')
@@ -422,6 +424,7 @@ const learnMenuItems = [
   { path: '/cards', label: '背题模式', desc: '卡片翻转，查看答案', color: '#1CB0F6', icon: '🃏' },
   { path: '/exam', label: '模拟考试', desc: '限时考试，真实模拟', color: '#FF9600', icon: '📝' },
   { path: '/daily', label: '每日一练', desc: '智能混合推荐', color: '#CE82FF', icon: '📅' },
+  { path: '/smart', label: '智能练习', desc: '算法推荐今日该练', color: '#FF4B4B', icon: '🎯' },
   { path: '/categories', label: '浏览学习', desc: '按题库逐题浏览', color: '#FFC800', icon: '📖' },
 ]
 

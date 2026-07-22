@@ -4,10 +4,13 @@ import { useApp } from '../context/AppContext'
 import { getCategoryById, toggleBookmark, isBookmarked, getFilteredQuestions, getTagsByCategory } from '../db/database'
 import { shuffleArray } from '../services/studyService'
 import { ensureCategoryQuestions } from '../services/questionBank'
+import { useToast } from '../components/ToastProvider'
+import * as account from '../services/account'
 
 export default function CardStudyPage() {
   const navigate = useNavigate()
   const { categories } = useApp()
+  const { addToast } = useToast()
   
   const [selectedCategoryId, setSelectedCategoryId] = useState('')
   const [selectedTag, setSelectedTag] = useState('')
@@ -52,7 +55,14 @@ export default function CardStudyPage() {
   const handleNext = () => { if (index < questions.length - 1) { setIndex(i => i + 1); setFlipped(false) } }
   const handleBookmark = () => {
     const q = questions[index]
-    if (q) { toggleBookmark(q.id); setBookmarked(b => !b) }
+    if (!q) return
+    if (!account.isAuthed()) {
+      account.requireAuth('收藏题目')
+      addToast('请先登录后收藏', 'info', 1500)
+      return
+    }
+    toggleBookmark(q.id)
+    setBookmarked(b => !b)
   }
 
   const handlersRef = React.useRef({ handleFlip, handlePrev, handleNext })

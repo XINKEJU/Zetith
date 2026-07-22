@@ -20,6 +20,10 @@ export function requireAuth(reason = '此操作') {
   return false
 }
 
+// 是否已登录（同步可读，供 UI 在写操作前判断是否拦截并弹登录框）
+export function isAuthed() {
+  return !!cachedUser
+}
 
 // 后端是否已配置（开发者在 .env 中填入 Supabase 凭据）
 export function isConfigured() {

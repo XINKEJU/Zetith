@@ -142,12 +142,16 @@ export async function searchQuestions(keyword, categoryId = null) {
   const term = (keyword || '').trim()
   if (!term) return []
 
+  // 清洗搜索词：移除会破坏 PostgREST .or() 语法与 LIKE 通配符的字符，避免查询报错
+  const safe = term.replace(/[\\%_,()]/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!safe) return []
+
   if (isCloudSource()) {
     try {
       let query = supabase
         .from('questions')
         .select('id,category_id,question_type,stem,option_a,option_b,option_c,option_d,answer,explanation,difficulty,tags,created_at')
-        .or(`stem.ilike.%${term}%,tags.ilike.%${term}%,explanation.ilike.%${term}%`)
+        .or(`stem.ilike.%${safe}%,tags.ilike.%${safe}%,explanation.ilike.%${safe}%`)
       if (categoryId) query = query.eq('category_id', categoryId)
       const { data, error } = await query.limit(50)
       if (!error && data?.length) {

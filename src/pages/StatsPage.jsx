@@ -1,15 +1,17 @@
 import { useMemo, memo } from 'react'
-import { Bar, Doughnut } from 'react-chartjs-2'
+import { Bar, Doughnut, Line, Radar } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, BarElement, ArcElement,
+  RadialLinearScale, PointElement, LineElement, Filler,
   Title, Tooltip, Legend
 } from 'chart.js'
 import { useApp } from '../context/AppContext'
-import { getDailyStats, getIndividualTagStats, getQuestionTypeStats, getCategoryProgress, getDailyHeatmap, getLearningDaysCount } from '../db/database'
+import { getDailyStats, getIndividualTagStats, getQuestionTypeStats, getCategoryProgress, getDailyHeatmap, getLearningDaysCount, getAccuracyTrend, getMasteryByCategory, getPredictedPerformance, getReviewSchedule } from '../db/database'
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, ArcElement,
+  RadialLinearScale, PointElement, LineElement, Filler,
   Title, Tooltip, Legend
 )
 
@@ -107,6 +109,59 @@ export default function StatsPage() {
   const heatmapData = useMemo(() => {
     try { return getDailyHeatmap(210) } catch { return [] }
   }, [stats])
+
+  // ======= 学习洞察看板（智能算法输出）=======
+  const accuracyTrend = useMemo(() => { try { return getAccuracyTrend(21) } catch { return [] } }, [stats])
+  const masteryByCategory = useMemo(() => { try { return getMasteryByCategory() } catch { return [] } }, [stats])
+  const predicted = useMemo(() => { try { return getPredictedPerformance() } catch { return null } }, [stats])
+  const reviewSchedule = useMemo(() => { try { return getReviewSchedule(7) } catch { return [] } }, [stats])
+
+  // 累计正确率走势：从最早记录逐日累计，反映长期进步曲线
+  const cumChartData = useMemo(() => {
+    if (!accuracyTrend.length) return null
+    let cumTotal = 0, cumCorrect = 0
+    const cum = accuracyTrend.map(d => {
+      cumTotal += d.total
+      cumCorrect += d.correct
+      return cumTotal ? Math.round(cumCorrect / cumTotal * 100) : 0
+    })
+    return {
+      labels: accuracyTrend.map(d => d.day.slice(5)),
+      datasets: [{
+        label: '累计正确率',
+        data: cum,
+        borderColor: '#58CC02',
+        backgroundColor: 'rgba(88,204,2,0.12)',
+        fill: true,
+        tension: 0.35,
+        pointRadius: 2,
+        borderWidth: 2
+      }]
+    }
+  }, [accuracyTrend])
+
+  // 分类掌握度雷达：取已练习且正确率有区分度的前 6 个分类
+  const masteryRadarData = useMemo(() => {
+    const list = masteryByCategory.filter(m => m.attempted > 0).slice(0, 6)
+    if (!list.length) return null
+    return {
+      labels: list.map(m => m.name.length > 6 ? m.name.slice(0, 6) + '…' : m.name),
+      datasets: [{
+        label: '正确率',
+        data: list.map(m => m.rate),
+        borderColor: '#1CB0F6',
+        backgroundColor: 'rgba(28,176,246,0.15)',
+        borderWidth: 2,
+        pointBackgroundColor: '#1CB0F6',
+        pointRadius: 3
+      }]
+    }
+  }, [masteryByCategory])
+
+  const dueThisWeek = useMemo(() => reviewSchedule.reduce((s, d) => s + d.due, 0), [reviewSchedule])
+  const predictColor = predicted
+    ? (predicted.rate >= 70 ? 'var(--success)' : predicted.rate >= 50 ? 'var(--warning)' : 'var(--danger)')
+    : 'var(--text-muted)'
 
   const dailyChartData = {
     labels: dailyStats.map(d => d.day.slice(5)),
@@ -240,6 +295,113 @@ export default function StatsPage() {
       <div className="card" style={{ marginBottom: '18px' }}>
         <h3 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '14px' }}>学习热力图</h3>
         <Heatmap data={heatmapData} />
+      </div>
+
+      {/* 学习洞察看板：智能算法汇总 */}
+      <div style={{ marginBottom: '20px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '14px' }}>
+          📊 学习洞察看板
+        </h3>
+
+        <div className="stats-chart-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+          {/* 预测表现 */}
+          <div className="card" style={{ borderLeft: '3px solid ' + predictColor }}>
+            <h4 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '10px' }}>🤖 下一次表现预测</h4>
+            {predicted ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '38px', fontWeight: 700, color: predictColor, lineHeight: 1 }}>{predicted.rate}%</span>
+                  <span style={{ fontSize: '14px', fontWeight: 600, color: predictColor }}>{predicted.label}</span>
+                </div>
+                <div style={{ height: '6px', borderRadius: '4px', background: 'var(--border-light)', overflow: 'hidden', marginBottom: '12px' }}>
+                  <div style={{ width: predicted.rate + '%', height: '100%', background: predictColor, borderRadius: '4px' }} />
+                </div>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  💡 {predicted.suggestion}
+                </p>
+                <div style={{ marginTop: '12px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                  基于近 7 天 {accuracyTrend.slice(-7).reduce((s, t) => s + t.total, 0) || 0} 次作答的正确率加权预测
+                </div>
+              </>
+            ) : (
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>暂无足够数据，完成练习后生成预测。</p>
+            )}
+          </div>
+
+          {/* 分类掌握度雷达 */}
+          <div className="card">
+            <h4 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '10px' }}>🎯 分类掌握度</h4>
+            {masteryRadarData ? (
+              <div style={{ height: '240px' }}>
+                <Radar data={masteryRadarData} options={{
+                  responsive: true, maintainAspectRatio: false,
+                  plugins: { legend: { display: false } },
+                  scales: {
+                    r: {
+                      min: 0, max: 100,
+                      angleLines: { color: 'rgba(128,128,128,0.15)' },
+                      grid: { color: 'rgba(128,128,128,0.15)' },
+                      pointLabels: { font: { size: 11 } },
+                      ticks: { display: false, stepSize: 25 }
+                    }
+                  }
+                }} />
+              </div>
+            ) : (
+              <div className="empty-state" style={{ padding: '50px 20px' }}><p>暂无练习数据</p></div>
+            )}
+          </div>
+
+          {/* 复习排程概览 */}
+          <div className="card">
+            <h4 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '10px' }}>
+              🔁 未来 7 天复习排程
+              <span style={{ float: 'right', fontSize: '12px', color: 'var(--text-muted)', fontWeight: 400 }}>
+                本周共 {dueThisWeek} 题
+              </span>
+            </h4>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {reviewSchedule.map((s, i) => (
+                <div key={i}
+                  style={{
+                    flex: '1 1 0', minWidth: '40px', textAlign: 'center',
+                    background: s.isToday ? 'var(--accent-light)' : 'var(--bg-secondary)',
+                    border: s.due > 0 ? '1px solid var(--accent)' : '1px solid transparent',
+                    borderRadius: '10px', padding: '10px 4px'
+                  }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    {i === 0 ? '今天' : i === 1 ? '明天' : s.day.slice(5)}
+                  </div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: s.due > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>
+                    {s.due}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '10px', lineHeight: 1.6 }}>
+              基于 SM-2 间隔重复算法推算的到期题量，建议优先完成「今天」到期的复习。
+            </p>
+          </div>
+        </div>
+
+        {/* 累计正确率走势 */}
+        <div className="card">
+          <h4 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>📈 累计正确率走势（近 21 天）</h4>
+          {cumChartData ? (
+            <div style={{ height: '240px' }}>
+              <Line data={cumChartData} options={{
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ' 累计正确率 ' + c.parsed.y + '%' } } },
+                scales: {
+                  y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } },
+                  x: { grid: { display: false } }
+                }
+              }} />
+            </div>
+          ) : (
+            <div className="empty-state" style={{ padding: '50px 20px' }}><p>暂无练习数据</p></div>
+          )}
+        </div>
       </div>
 
       {/* 题库概览 */}

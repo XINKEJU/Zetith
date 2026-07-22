@@ -29,5 +29,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 答题进度上报（macOS Dock 进度条）：ratio 0~1 显示，-1 移除
   reportProgress: (ratio) => ipcRenderer.invoke('app:progress', ratio),
   // WebDAV 代理：主进程代为发起请求，绕过渲染进程 CORS 限制（坚果云同步用）
-  webdavRequest: (opts) => ipcRenderer.invoke('webdav:request', opts)
+  webdavRequest: (opts) => ipcRenderer.invoke('webdav:request', opts),
+  // 外部链接：在系统默认浏览器打开
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  // Supabase 会话持久化：把 token 存到主进程管理的文件（见 main.js 'auth:storage'）
+  authStorage: (op, key, value) => ipcRenderer.invoke('auth:storage', { op, key, value })
 })

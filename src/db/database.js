@@ -42,6 +42,24 @@ function safeGet(result, defaultValue) {
   if (!result || !result.length || !result[0]?.values?.length) return defaultValue
   return result[0].values
 }
+// 设备级唯一 ID：用于给学习记录 / 会话生成跨设备不冲突的 sync_key，
+// 让多端同步去重正确（本地自增 id 在不同设备会重复）。
+let _deviceId = null
+export function getDeviceId() {
+  if (_deviceId) return _deviceId
+  try {
+    let id = localStorage.getItem('zetith_device_id')
+    if (!id) {
+      id = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+      localStorage.setItem('zetith_device_id', id)
+    }
+    _deviceId = id
+  } catch {
+    _deviceId = 'd_fallback'
+  }
+  return _deviceId
+}
+
 async function getOPFSFile() {
   const root = await navigator.storage.getDirectory();
   try {
@@ -172,12 +190,39 @@ export async function initDatabase(onProgress) {
     }
   } catch (e) { /* 忽略迁移错误 */ }
 
+  // 迁移：同步去重。study_records / sessions 增加设备级唯一 sync_key，
+  // 避免多端拉取时按本地自增 id 错位导致重复插入 / 覆盖。
+  try {
+    const srCols = safeExec('PRAGMA table_info(study_records)')
+    if (srCols.length && !srCols[0].values.map(r => r[1]).includes('sync_key')) {
+      safeRun('ALTER TABLE study_records ADD COLUMN sync_key TEXT')
+      const did = getDeviceId()
+      safeRun('UPDATE study_records SET sync_key = ? || id WHERE sync_key IS NULL', [did + ':'])
+      safeRun('CREATE UNIQUE INDEX IF NOT EXISTS idx_sr_sync_key ON study_records(sync_key)')
+    }
+  } catch (e) { /* 忽略迁移错误 */ }
+
+  try {
+    const seCols = safeExec('PRAGMA table_info(sessions)')
+    if (seCols.length && !seCols[0].values.map(r => r[1]).includes('sync_key')) {
+      safeRun('ALTER TABLE sessions ADD COLUMN sync_key TEXT')
+      const did = getDeviceId()
+      safeRun('UPDATE sessions SET sync_key = ? || id WHERE sync_key IS NULL', [did + ':'])
+      safeRun('CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_sync_key ON sessions(sync_key)')
+    }
+  } catch (e) { /* 忽略迁移错误 */ }
+
   safeRun(`CREATE TABLE IF NOT EXISTS bookmarks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     question_id INTEGER NOT NULL,
     created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
   )`);
+
+  // 收藏去重：question_id 唯一，避免多端拉取重复插入（表建好后建索引）
+  try {
+    safeRun('CREATE UNIQUE INDEX IF NOT EXISTS idx_bookmarks_question ON bookmarks(question_id)')
+  } catch (e) { /* 旧库若存在重复则忽略，不影响使用 */ }
 
   safeRun(`CREATE TABLE IF NOT EXISTS review_state (
     question_id INTEGER PRIMARY KEY,
@@ -331,6 +376,13 @@ export function saveStudyRecord(questionId, categoryId, isCorrect, answerGiven, 
     'INSERT INTO study_records (question_id, category_id, is_correct, answer_given, time_spent) VALUES (?, ?, ?, ?, ?)',
     [questionId, categoryId, isCorrect ? 1 : 0, answerGiven, timeSpent]
   );
+  try {
+    const rid = safeExec('SELECT last_insert_rowid()');
+    if (rid.length && rid[0].values.length) {
+      const id = rid[0].values[0][0];
+      safeRun('UPDATE study_records SET sync_key = ? WHERE id = ?', [getDeviceId() + ':' + id, id]);
+    }
+  } catch {}
 }
 
 export function getStudyStats(categoryId = null) {
@@ -972,10 +1024,13 @@ export function saveSession({ type, categoryId, total, correct, timeSpent, score
     [type, categoryId || null, total, correct, timeSpent, score]
   );
   const sessionId = safeExec('SELECT last_insert_rowid()')[0]?.values?.[0]?.[0];
-  if (sessionId && items) {
-    for (const item of items) {
-      safeRun('INSERT INTO session_items (session_id, question_id, is_correct, answer_given, time_spent) VALUES (?,?,?,?,?)',
-        [sessionId, item.questionId, item.isCorrect ? 1 : 0, item.answer || '', item.timeSpent || 0]);
+  if (sessionId) {
+    safeRun('UPDATE sessions SET sync_key = ? WHERE id = ?', [getDeviceId() + ':' + sessionId, sessionId]);
+    if (items) {
+      for (const item of items) {
+        safeRun('INSERT INTO session_items (session_id, question_id, is_correct, answer_given, time_spent) VALUES (?,?,?,?,?)',
+          [sessionId, item.questionId, item.isCorrect ? 1 : 0, item.answer || '', item.timeSpent || 0]);
+      }
     }
   }
   saveDatabase().catch(() => {});

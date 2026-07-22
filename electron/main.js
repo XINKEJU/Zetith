@@ -353,6 +353,38 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('theme:initial', () => nativeTheme.shouldUseDarkColors)
 
+  // 外部链接：在系统默认浏览器打开
+  ipcMain.handle('shell:openExternal', async (event, url) => {
+    if (typeof url === 'string' && url.startsWith('http')) {
+      await shell.openExternal(url)
+      return true
+    }
+    return false
+  })
+
+  // Supabase 会话持久化：渲染进程把会话 token 存到 userData 下的文件，
+  // 而非 localStorage（Electron 用随机端口本地 HTTP，origin 每次都变，
+  // localStorage 按 origin 隔离会导致重启后登录态丢失）。
+  ipcMain.handle('auth:storage', async (event, { op, key, value }) => {
+    const fp = path.join(userData, 'auth-storage.json')
+    let map = {}
+    try {
+      map = JSON.parse(await fs.promises.readFile(fp, 'utf8'))
+    } catch { map = {} }
+    if (op === 'get') return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : null
+    if (op === 'set') {
+      map[key] = value
+      await fs.promises.writeFile(fp, JSON.stringify(map))
+      return true
+    }
+    if (op === 'remove') {
+      delete map[key]
+      await fs.promises.writeFile(fp, JSON.stringify(map))
+      return true
+    }
+    return null
+  })
+
   // 答题进度上报：macOS 在 Dock 栏显示进度（ratio 0~1 显示，-1 移除）
   ipcMain.handle('app:progress', (event, ratio) => {
     if (process.platform === 'darwin' && mainWindow && !mainWindow.isDestroyed()) {

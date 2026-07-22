@@ -4,8 +4,8 @@ import { useApp } from '../context/AppContext'
 import SearchModal from './SearchModal'
 import ShortcutPanel from './ShortcutPanel'
 import ReminderSetup from './ReminderSetup'
-import SyncSetup from './SyncSetup'
-import * as cloudantSync from '../services/cloudantSync'
+import * as account from '../services/account'
+import * as supabaseSync from '../services/supabaseSync'
 import { useToast } from './ToastProvider'
 import { importFromFiles } from '../services/importService'
 
@@ -36,7 +36,6 @@ export default function Layout({ children }) {
   const [showSearch, setShowSearch] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showReminder, setShowReminder] = useState(false)
-  const [showSync, setShowSync] = useState(false)
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const { addToast } = useToast()
   const [showDrop, setShowDrop] = useState(false)
@@ -66,12 +65,18 @@ export default function Layout({ children }) {
   // 同步最新 themeSource 给原生主题监听回调
   useEffect(() => { themeSourceRef.current = themeSource }, [themeSource])
 
-  // 已配置 Cloudant 且在后端选择为 cloudant 时，启动实时同步（App 启动即生效，无需点击）
+  // 账户登录驱动同步：开发者配好 Supabase 后端后，用户登录即自动同步，零配置。
+  // 等数据库就绪后再注册监听，避免首屏 syncNow 时 DB 尚未初始化。
   useEffect(() => {
-    if (dbReady && localStorage.getItem('zetith_sync_backend') === 'cloudant' && cloudantSync.isConfigured()) {
-      cloudantSync.start()
-    }
-    return () => {}
+    if (!account.isConfigured() || !dbReady) return
+    const off = account.onAuthChange((user) => {
+      if (user) supabaseSync.startAutoSync(user)
+      else supabaseSync.stopAutoSync()
+    })
+    account.getSession().then((s) => {
+      if (s?.user) supabaseSync.startAutoSync(s.user)
+    })
+    return off
   }, [dbReady])
 
   // 虚拟键盘避让：软键盘弹出时记录偏移量，供固定底栏上移
@@ -301,12 +306,27 @@ export default function Layout({ children }) {
               {item.path === '/wrongbook' && wrongCount > 0 && (
                 <span className={`nav-badge ${collapsed ? 'nav-badge-collapsed' : ''}`}>{wrongCount}</span>
               )}
-              <span className="nav-shortcut sidebar-text">⌘{item.key}</span>
+              {item.shortcut !== false && <span className="nav-shortcut sidebar-text">⌘{item.key}</span>}
             </button>
           ))}
         </nav>
 
         <div className="sidebar-footer">
+          <button
+            className={`nav-item account-entry ${isActive('/profile') ? 'active' : ''}`}
+            onClick={() => navigate('/profile')}
+            style={{ width: '100%' }}
+            title={collapsed ? '个人中心' : undefined}
+          >
+            <span className="nav-dot" />
+            {collapsed && (
+              <svg className="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: isActive('/profile') ? 'var(--duo-green)' : undefined }}>
+                <circle cx="10" cy="8" r="4" />
+                <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+              </svg>
+            )}
+            <span className="sidebar-text">个人中心</span>
+          </button>
           <button className="nav-item" onClick={() => setShowReminder(true)} style={{ width: '100%' }} title={collapsed ? '学习提醒' : undefined}>
             <span className="nav-dot" />
             {collapsed && (
@@ -333,17 +353,6 @@ export default function Layout({ children }) {
             )}
             <span className="sidebar-text">{darkMode ? '深色模式' : '浅色模式'}</span>
             <span className="nav-shortcut sidebar-text">⌘T</span>
-          </button>
-          <button className="nav-item" onClick={() => setShowSync(true)} style={{ width: '100%' }} title={collapsed ? '数据同步' : undefined}>
-            <span className="nav-dot" style={{ background: 'rgba(255,255,255,0.3)' }} />
-            {collapsed && (
-              <svg className="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"
-                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 13V8C14 5.79 12.21 4 10 4C7.79 4 6 5.79 6 8V13L4 15H16L14 13Z" />
-                <path d="M9 17H11" />
-              </svg>
-            )}
-            <span className="sidebar-text">数据同步</span>
           </button>
         </div>
       </aside>
@@ -426,7 +435,6 @@ export default function Layout({ children }) {
       {showSearch && <SearchModal onClose={() => setShowSearch(false)} />}
       {showShortcuts && <ShortcutPanel onClose={() => setShowShortcuts(false)} />}
       {showReminder && <ReminderSetup onClose={() => setShowReminder(false)} />}
-      {showSync && <SyncSetup onClose={() => setShowSync(false)} />}
     </div>
   )
 }
@@ -447,13 +455,6 @@ const learnMenuItems = [
   { path: '/categories', label: '浏览学习', desc: '按题库逐题浏览', color: '#FFC800', icon: '📖' },
 ]
 
-const meMenuItems = [
-  { path: '/stats', label: '学习统计', desc: '数据分析和弱项诊断', icon: '📊' },
-  { path: '/favorites', label: '收藏夹', desc: '收藏的题目', icon: '⭐' },
-  { path: '/history', label: '练习历史', desc: '查看所有练习记录', icon: '🕐' },
-  { path: '/categories', label: '题库管理', desc: '导入导出和管理题库', icon: '📚' },
-]
-
 function MobileNav({ location, navigate, wrongCount, onSearch }) {
   const [activeSheet, setActiveSheet] = useState(null) // 'learn' | 'me' | null
   const sheetRef = useRef(null)
@@ -465,6 +466,10 @@ function MobileNav({ location, navigate, wrongCount, onSearch }) {
   const closeSheet = () => setActiveSheet(null)
 
   const handleTabClick = (item) => {
+    if (item.icon === 'me') {
+      navigate('/profile')
+      return
+    }
     if (item.isMenu) {
       setActiveSheet(prev => prev === item.icon ? null : item.icon)
     } else {
@@ -484,12 +489,12 @@ function MobileNav({ location, navigate, wrongCount, onSearch }) {
              location.startsWith('/study/')
     }
     if (item.icon === 'me') {
-      return ['/stats', '/favorites', '/history', '/categories'].includes(location)
+      return location === '/profile' || ['/stats', '/favorites', '/history', '/categories'].includes(location)
     }
     return location === item.path
   }
 
-  const sheetItems = activeSheet === 'learn' ? learnMenuItems : activeSheet === 'me' ? meMenuItems : []
+  const sheetItems = activeSheet === 'learn' ? learnMenuItems : []
 
   return (
     <>
@@ -576,7 +581,7 @@ function MobileNav({ location, navigate, wrongCount, onSearch }) {
                 </button>
 
                 <button
-                  key={item.path || `${item.icon}-2`}
+                  key={mobileNavItems[3].path || `${mobileNavItems[3].icon}-2`}
                   className={`mobile-nav-item ${active ? 'active' : ''}`}
                   onClick={() => handleTabClick(mobileNavItems[3])}
                 >

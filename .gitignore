@@ -7,3 +7,8 @@ tiku.db
 release/
 public/icon.iconset/
 vite.config.js.timestamp-*.mjs
+
+# 本地环境变量（含 Supabase 公开 key，勿提交）
+.env
+.env.local
+.env.*.local

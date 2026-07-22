@@ -5,8 +5,19 @@
 //   - Cloudant 收到其他设备变更 → 流入本地 PouchDB → 合并回 sql.js 并刷新 UI
 // 合并语义：最后修改时间优先（LWW），与原有 syncService 一致。
 
-import PouchDB from 'pouchdb-browser'
 import { getDatabase, saveDatabase } from '../db/database'
+
+// PouchDB 改为懒加载：它依赖的 Node 内置 `events` 在浏览器打包时若被错误解析，
+// 会在模块求值阶段抛错并导致整页白屏。Cloudant 同步是可选功能，
+// 仅在用户真正配置/启动时才加载 PouchDB，避免影响首屏。
+let PouchDB = null
+async function getPouchDB() {
+  if (!PouchDB) {
+    const mod = await import('pouchdb-browser')
+    PouchDB = mod.default || mod
+  }
+  return PouchDB
+}
 
 // 注意：PouchDB 在 Electron 渲染进程需要 process.browser / global polyfill，
 // 已在 index.html 与 main.jsx 顶部注入。
@@ -61,14 +72,18 @@ export function clearConfig() {
   localStorage.removeItem(LS_PWD)
 }
 
-function ensureLocal() {
-  if (!localDB) localDB = new PouchDB(LOCAL_DB)
+async function ensureLocal() {
+  if (!localDB) {
+    const P = await getPouchDB()
+    localDB = new P(LOCAL_DB)
+  }
   return localDB
 }
 
-function buildRemote() {
+async function buildRemote() {
   const { url, key, password } = getConfig()
-  return new PouchDB(url, { auth: { username: key, password } })
+  const P = await getPouchDB()
+  return new P(url, { auth: { username: key, password } })
 }
 
 // 读取单行值（sql.js 不带参数 exec 不便，用 prepare）
@@ -102,7 +117,7 @@ function collectLocalDocs(db) {
 export async function pushLocalToPouch() {
   const db = getDatabase()
   if (!db || !isConfigured()) return
-  const local = ensureLocal()
+  const local = await ensureLocal()
   const docs = collectLocalDocs(db)
   if (!docs.length) return
   const existing = await local.allDocs({ keys: docs.map(d => d._id), include_docs: true })
@@ -160,11 +175,11 @@ function debouncedPush() {
 }
 
 // 启动实时双向同步（配置保存后或 App 启动时调用）
-export function start() {
+export async function start() {
   if (!isConfigured()) { emitStatus('error', '未配置 Cloudant'); return }
-  ensureLocal()
+  await ensureLocal()
   try {
-    remoteDB = buildRemote()
+    remoteDB = await buildRemote()
   } catch (e) {
     emitStatus('error', String((e && e.message) || e)); return
   }
@@ -195,9 +210,9 @@ export function stop() {
 // 手动立即同步一次（双向）
 export async function syncNow() {
   if (!isConfigured()) throw new Error('请先配置 Cloudant')
-  ensureLocal()
+  await ensureLocal()
   await pushLocalToPouch()
-  if (!remoteDB) remoteDB = buildRemote()
+  if (!remoteDB) remoteDB = await buildRemote()
   await localDB.sync(remoteDB)
   emitStatus('synced')
 }

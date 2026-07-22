@@ -17,6 +17,7 @@ const FavoritesPage = lazy(() => import('./pages/FavoritesPage'))
 const CardStudyPage = lazy(() => import('./pages/CardStudyPage'))
 const DailyPage = lazy(() => import('./pages/DailyPage'))
 const HistoryPage = lazy(() => import('./pages/HistoryPage'))
+const ProfilePage = lazy(() => import('./pages/ProfilePage'))
 
 function PageLoader() {
   return (
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="/wrongbook" element={<WrongBookPage />} />
           <Route path="/favorites" element={<FavoritesPage />} />
           <Route path="/history" element={<HistoryPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </Suspense>

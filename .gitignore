@@ -6,3 +6,4 @@ dist/
 tiku.db
 release/
 public/icon.iconset/
+vite.config.js.timestamp-*.mjs

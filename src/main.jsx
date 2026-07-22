@@ -9,6 +9,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './styles/app.css'
+import { supabase } from './services/supabaseClient'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <BrowserRouter>
@@ -23,19 +24,41 @@ if ('serviceWorker' in navigator && !window.electronDB) {
 // Study reminder scheduler
 function setupReminder() {
   try {
-    const prefs = JSON.parse(localStorage.getItem('studyReminder') || '{"enabled":false,"time":"20:00"}')
-    if (!prefs.enabled || !('Notification' in window)) return
-
-    const checkAndNotify = () => {
+    let lastEmailDay = '' // 按天去重，避免同一分钟内多次触发重复发信
+    const checkAndNotify = async () => {
+      let prefs
+      try {
+        prefs = JSON.parse(localStorage.getItem('studyReminder') || '{}')
+      } catch { prefs = {} }
+      if (!prefs.enabled) return
       const now = new Date()
-      const [h, m] = prefs.time.split(':').map(Number)
-      if (now.getHours() === h && now.getMinutes() === m && now.getSeconds() < 10) {
-        if (Notification.permission === 'granted') {
-          new Notification('知题 · Zetith', {
-            body: '📖 该学习了！打开知题刷几道题，保持学习节奏。',
-            icon: '/icon-192.png',
-            tag: 'study-reminder'
-          })
+      const [h, m] = (prefs.time || '20:00').split(':').map(Number)
+      if (!(now.getHours() === h && now.getMinutes() === m && now.getSeconds() < 10)) return
+
+      // 浏览器通知
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('知题 · Zetith', {
+          body: '📖 该学习了！打开知题刷几道题，保持学习节奏。',
+          icon: '/icon-192.png',
+          tag: 'study-reminder'
+        })
+      }
+
+      // 邮件通知：需登录账号，调用 Supabase Edge Function（未配置时静默降级）
+      if (prefs.email && supabase) {
+        const day = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`
+        if (day !== lastEmailDay) {
+          lastEmailDay = day
+          try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user?.email) {
+              await supabase.functions.invoke('send-reminder', {
+                body: { to: user.email, name: user.user_metadata?.nickname || '' }
+              })
+            }
+          } catch {
+            /* 邮件发送失败不影响浏览器通知 */
+          }
         }
       }
     }

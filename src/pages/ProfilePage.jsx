@@ -21,6 +21,12 @@ function getInitial(email) {
   return e ? e.charAt(0).toUpperCase() : '?'
 }
 
+function getDisplayName(user, email) {
+  const n = user?.user_metadata?.nickname
+  if (n && String(n).trim()) return String(n).trim()
+  return user?.email || email || '学习者'
+}
+
 const quickLinks = [
   { path: '/stats', label: '学习统计', icon: '📊' },
   { path: '/favorites', label: '收藏夹', icon: '⭐' },
@@ -46,6 +52,8 @@ export default function ProfilePage() {
   const [email, setEmail] = useState(account.getCachedEmail())
   const [password, setPassword] = useState('')
   const [user, setUser] = useState(null)
+  const [nickname, setNickname] = useState('')
+  const [nickBusy, setNickBusy] = useState(false)
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState('')
   const [status, setStatus] = useState('idle') // idle | syncing | synced | error
@@ -56,13 +64,30 @@ export default function ProfilePage() {
   const [themeSource, setThemeSource] = useState(() => localStorage.getItem('themeSource') || 'system')
   const [reminderOn, setReminderOn] = useState(false)
   const [reminderTime, setReminderTime] = useState('20:00')
+  const [reminderEmail, setReminderEmail] = useState(false)
   const [overview, setOverview] = useState({ favorites: 0, today: 0, streak: 0 })
 
   // 初始化会话
   useEffect(() => {
     if (!configured) return
-    account.getSession().then((s) => setUser(s?.user || null))
+    account.getSession().then((s) => {
+      setUser(s?.user || null)
+      setNickname(s?.user?.user_metadata?.nickname || '')
+    })
   }, [configured])
+
+  // 昵称被其它入口更新时（如保存成功）即时刷新
+  useEffect(() => {
+    const onUpd = (e) => {
+      const u = e?.detail
+      if (u) {
+        setUser(u)
+        setNickname(u.user_metadata?.nickname || '')
+      }
+    }
+    window.addEventListener('zetith:account-updated', onUpd)
+    return () => window.removeEventListener('zetith:account-updated', onUpd)
+  }, [])
 
   // 同步状态订阅
   useEffect(() => {
@@ -124,6 +149,7 @@ export default function ProfilePage() {
     const prefs = getReminderPrefs()
     setReminderOn(prefs.enabled)
     setReminderTime(prefs.time || '20:00')
+    setReminderEmail(!!prefs.email)
   }, [])
 
   const handleLogin = async () => {
@@ -209,11 +235,31 @@ export default function ProfilePage() {
     window.dispatchEvent(new CustomEvent('app:theme-system', { detail: src }))
   }
 
+  const saveNickname = async () => {
+    if (!user) return
+    setNickBusy(true)
+    try {
+      const u = await account.updateNickname(nickname)
+      setUser(u)
+      addToast('昵称已保存', 'success')
+    } catch (e) {
+      addToast('保存失败：' + (e?.message || String(e)), 'error')
+    } finally {
+      setNickBusy(false)
+    }
+  }
+
   const saveReminder = () => {
-    saveReminderPrefs({ enabled: reminderOn, time: reminderTime })
+    if (reminderEmail && !user) {
+      addToast('邮件提醒需先登录账号', 'error')
+      return
+    }
+    saveReminderPrefs({ enabled: reminderOn, time: reminderTime, email: reminderEmail && !!user })
     if (reminderOn) {
       if ('Notification' in window) {
         Notification.requestPermission().then(() => addToast('学习提醒已开启', 'success'))
+      } else {
+        addToast('学习提醒已开启', 'success')
       }
     } else {
       addToast('学习提醒已关闭', 'info')
@@ -240,13 +286,14 @@ export default function ProfilePage() {
 
       {/* 账号信息头部 */}
       <div className="pc-header card">
-        <div className="pc-avatar">{getInitial(user?.email || email)}</div>
+        <div className="pc-avatar">{getInitial(getDisplayName(user, email))}</div>
         <div className="pc-header-info">
           {user ? (
             <>
-              <div className="pc-name">{user.email}</div>
+              <div className="pc-name">{getDisplayName(user, email)}</div>
               <div className="pc-sub">
                 <span className="pc-badge pc-badge-on">已登录</span>
+                {user?.user_metadata?.nickname ? <span className="pc-badge">{user.email}</span> : null}
                 {status === 'offline' && <span className="pc-badge pc-badge-err">离线</span>}
                 {status === 'syncing' && <span className="pc-badge pc-badge-sync">同步中…</span>}
                 {status === 'error' && <span className="pc-badge pc-badge-err">同步异常</span>}
@@ -337,12 +384,28 @@ export default function ProfilePage() {
               )}
             </div>
           ) : user ? (
-            <div className="pc-account-row">
-              <div>
-                <div className="pc-row-label">当前账号</div>
+            <div>
+              <div style={{ marginBottom: '14px' }}>
+                <div className="pc-row-label" style={{ marginBottom: '6px' }}>当前账号</div>
                 <div className="pc-row-value">{user.email}</div>
               </div>
-              <span className="pc-badge pc-badge-on">已登录</span>
+              <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                昵称（随账号在多设备同步）
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={nickname}
+                  maxLength={20}
+                  onChange={(e) => setNickname(e.target.value)}
+                  placeholder="给自己起个名字"
+                  className="allow-select"
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+                <button className="btn btn-primary" onClick={saveNickname} disabled={nickBusy}>
+                  {nickBusy ? '保存中…' : '保存'}
+                </button>
+              </div>
             </div>
           ) : (
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>后端未配置，账号功能不可用。</p>
@@ -406,8 +469,22 @@ export default function ProfilePage() {
             <div style={{ marginBottom: '12px' }}>
               <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>提醒时间</label>
               <input type="time" value={reminderTime} onChange={e => setReminderTime(e.target.value)} />
+              <label
+                style={{ cursor: user ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', opacity: user ? 1 : 0.55 }}
+              >
+                <input
+                  type="checkbox"
+                  checked={reminderEmail}
+                  disabled={!user}
+                  onChange={e => setReminderEmail(e.target.checked)}
+                />
+                同时发送邮件提醒到 {user ? user.email : '登录账号'}
+              </label>
+              {!user && (
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>登录后即可启用邮件提醒</p>
+              )}
               <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
-                每日定时推送学习提醒，需要浏览器通知权限
+                到点推送学习提醒：浏览器通知{reminderEmail && user ? ' + 邮件' : ''}
               </p>
             </div>
           )}

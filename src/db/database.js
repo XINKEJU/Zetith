@@ -872,10 +872,16 @@ export function removeDuplicatesInCategory(categoryId) {
 }
 
 // ======= 学习提醒 =======
+// prefs: { enabled, time, email } —— email 表示是否同时发送邮件提醒（需登录账号）
 export function getReminderPrefs() {
   try {
-    return JSON.parse(localStorage.getItem('studyReminder') || '{"enabled":false,"time":"20:00"}');
-  } catch { return { enabled: false, time: '20:00' }; }
+    const p = JSON.parse(localStorage.getItem('studyReminder') || '{}');
+    return {
+      enabled: !!p.enabled,
+      time: p.time || '20:00',
+      email: !!p.email
+    };
+  } catch { return { enabled: false, time: '20:00', email: false }; }
 }
 
 export function saveReminderPrefs(prefs) {

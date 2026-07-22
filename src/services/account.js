@@ -77,3 +77,21 @@ export function onAuthChange(cb) {
 export function getCachedEmail() {
   return localStorage.getItem(LS_EMAIL) || ''
 }
+
+// 更新昵称：存入 Supabase Auth 的 user_metadata（随账号自动跨设备同步）。
+// 成功后刷新登录态缓存并广播事件，供个人中心即时刷新显示。
+export async function updateNickname(nickname) {
+  if (!supabase) throw new Error('同步后端未配置')
+  const trimmed = (nickname || '').trim()
+  const { data, error } = await supabase.auth.updateUser({
+    data: { nickname: trimmed ? trimmed : null }
+  })
+  if (error) throw error
+  if (data.user) {
+    setCachedUser(data.user)
+    try {
+      window.dispatchEvent(new CustomEvent('zetith:account-updated', { detail: data.user }))
+    } catch {}
+  }
+  return data.user
+}

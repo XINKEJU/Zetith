@@ -118,6 +118,13 @@ tiku-app/
 - PWA：`public/manifest.webmanifest` + `public/sw.js` 应用壳缓存，`index.html` 引用，非 Electron 环境注册（主题色对齐品牌绿 `#2f9e6f`）。
 - 自动更新：`electron-updater` 动态导入接入，帮助菜单「检查更新」已可用（见 0.3）。
 
+**数据同步（零服务器方案）**
+
+- 复用用户 GitHub 账号：账号 = GitHub 登录，存储 = 一个私有 Gist；Token 仅需 `gist` 作用域。
+- `src/services/githubSync.js`：Gist 后端（push/pull/getUser），Token 与 gistId 存 localStorage。
+- `src/services/syncService.js`：`exportUserData()` 仅导出 `review_state` / `notes` / `bookmarks`（按 question_id 为键，体积小）；`importUserData()` 以最后写入优先（LWW）合并远端，不删除本地独有记录。
+- 不同步题库本身（体积大）；前提是各设备导入相同题库使 question_id 对齐。
+
 ---
 
 ## 1. 项目概述

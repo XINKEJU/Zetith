@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import SearchModal from './SearchModal'
 import ShortcutPanel from './ShortcutPanel'
 import ReminderSetup from './ReminderSetup'
+import SyncSetup from './SyncSetup'
 import { useToast } from './ToastProvider'
 import { importFromFiles } from '../services/importService'
 
@@ -34,6 +35,7 @@ export default function Layout({ children }) {
   const [showSearch, setShowSearch] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showReminder, setShowReminder] = useState(false)
+  const [showSync, setShowSync] = useState(false)
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const { addToast } = useToast()
   const [showDrop, setShowDrop] = useState(false)
@@ -323,6 +325,17 @@ export default function Layout({ children }) {
             <span className="sidebar-text">{darkMode ? '深色模式' : '浅色模式'}</span>
             <span className="nav-shortcut sidebar-text">⌘T</span>
           </button>
+          <button className="nav-item" onClick={() => setShowSync(true)} style={{ width: '100%' }} title={collapsed ? '数据同步' : undefined}>
+            <span className="nav-dot" style={{ background: 'rgba(255,255,255,0.3)' }} />
+            {collapsed && (
+              <svg className="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"
+                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 13V8C14 5.79 12.21 4 10 4C7.79 4 6 5.79 6 8V13L4 15H16L14 13Z" />
+                <path d="M9 17H11" />
+              </svg>
+            )}
+            <span className="sidebar-text">数据同步</span>
+          </button>
         </div>
       </aside>
 
@@ -404,6 +417,7 @@ export default function Layout({ children }) {
       {showSearch && <SearchModal onClose={() => setShowSearch(false)} />}
       {showShortcuts && <ShortcutPanel onClose={() => setShowShortcuts(false)} />}
       {showReminder && <ReminderSetup onClose={() => setShowReminder(false)} />}
+      {showSync && <SyncSetup onClose={() => setShowSync(false)} />}
     </div>
   )
 }

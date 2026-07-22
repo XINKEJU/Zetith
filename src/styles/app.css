@@ -2,6 +2,21 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Allow text selection inside editable inputs and explicitly opted-in elements */
+input, textarea, [contenteditable], .allow-select, .allow-select * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+html, body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 :root {
@@ -1787,6 +1802,11 @@ select {
   }
 }
 
+/* Category swipe-to-delete: background only visible on touch devices */
+.category-swipe-bg {
+  display: none;
+}
+
 /* ========= Category Management Mobile ========= */
 @media (max-width: 768px) {
   .categories-toolbar {
@@ -1842,18 +1862,23 @@ select {
     border-radius: var(--radius-lg);
   }
   .category-swipe-bg {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
     position: absolute;
     top: 0; right: 0; bottom: 0;
     width: 80px;
     background: var(--duo-red);
     color: #fff;
-    display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 14px;
-    font-weight: 800;
+    font-size: 12px;
+    font-weight: 700;
     border-radius: var(--radius-lg);
     pointer-events: none;
+  }
+  .category-swipe-bg svg {
+    flex-shrink: 0;
   }
   .category-swipe-content {
     position: relative;

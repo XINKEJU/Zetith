@@ -40,3 +40,25 @@ function setupReminder() {
 }
 
 setupReminder()
+
+// Disable text selection, drag and context menu outside editable fields
+function disableSelectionCopy() {
+  const allowlisted = (target) => {
+    if (!target) return false
+    const tag = target.tagName
+    return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable || target.closest?.('.allow-select')
+  }
+
+  const prevent = (e) => {
+    if (allowlisted(e.target)) return
+    e.preventDefault()
+  }
+
+  document.addEventListener('contextmenu', prevent, { capture: true })
+  document.addEventListener('selectstart', prevent, { capture: true })
+  document.addEventListener('dragstart', prevent, { capture: true })
+  document.addEventListener('copy', prevent, { capture: true })
+  document.addEventListener('cut', prevent, { capture: true })
+}
+
+disableSelectionCopy()

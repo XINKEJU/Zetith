@@ -674,59 +674,37 @@ export function getTagAnalysis() {
 }
 
 export function getIndividualTagStats() {
-  // Use a single GROUP BY query instead of N+1 pattern
+  // 单查询拉取「题目标签 + 是否正确」，在 JS 层按逗号拆标签聚合，
+  // 正确统计每个标签的 total 与 correct（含多标签题目的拆分），
+  // 修正旧实现只统计 is_correct=0 导致正确率恒为 0% 的问题。
   const r = safeExec(`
-    SELECT 
-      TRIM(SUBSTR(tags, 1, INSTR(tags || ',', ',') - 1)) as tag,
-      COUNT(sr.id) as total,
-      SUM(CASE WHEN sr.is_correct = 1 THEN 1 ELSE 0 END) as correct
-    FROM questions q
-    JOIN study_records sr ON q.id = sr.question_id
-    WHERE q.tags != '' AND q.tags IS NOT NULL
-    GROUP BY tag
-    HAVING total > 2
-    ORDER BY total DESC
-    LIMIT 50
-  `);
-  
-  if (!r.length || !r[0]?.values?.length) return [];
-  
-  // For multi-tag questions, also try LIKE-based aggregation for completeness
-  const tagResult = safeExec(
-    `SELECT q.tags,
-      COUNT(sr.id) as total,
-      SUM(CASE WHEN sr.is_correct = 1 THEN 1 ELSE 0 END) as correct
+    SELECT q.tags, sr.is_correct
     FROM study_records sr
     JOIN questions q ON sr.question_id = q.id
-    WHERE q.tags != '' AND sr.is_correct = 0
-    GROUP BY q.tags
-    ORDER BY total DESC
-    LIMIT 20
+    WHERE q.tags IS NOT NULL AND q.tags != ''
   `);
-  
-  // Aggregate individual tag statistics from multi-tag rows
+  if (!r.length || !r[0]?.values?.length) return [];
+
   const tagMap = {};
-  if (tagResult.length) {
-    for (const row of tagResult[0].values) {
-      const tags = row[0].split(',').filter(Boolean).map(t => t.trim());
-      for (const tag of tags) {
-        if (!tagMap[tag]) tagMap[tag] = { total: 0, correct: 0 };
-        tagMap[tag].total += row[1];
-        tagMap[tag].correct += row[2];
-      }
+  for (const row of r[0].values) {
+    const tags = String(row[0]).split(',').filter(Boolean).map(t => t.trim());
+    for (const tag of tags) {
+      if (!tagMap[tag]) tagMap[tag] = { total: 0, correct: 0 };
+      tagMap[tag].total += 1;
+      if (row[1] === 1 || row[1] === '1') tagMap[tag].correct += 1;
     }
   }
-  
-  const stats = Object.entries(tagMap)
-    .filter(([_, v]) => v.total > 2)
+
+  return Object.entries(tagMap)
+    .filter(([_, v]) => v.total >= 3)
     .map(([tag, v]) => ({
       tag,
       total: v.total,
       correct: v.correct,
       rate: Math.round((v.correct / v.total) * 100)
-    }));
-  
-  return stats.sort((a, b) => a.rate - b.rate);
+    }))
+    .sort((a, b) => a.rate - b.rate)
+    .slice(0, 50);
 }
 
 // ======= 错题移除 =======

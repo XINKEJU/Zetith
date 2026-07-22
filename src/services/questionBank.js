@@ -21,6 +21,36 @@ export function isCloudSource() {
   return isSupabaseConfigured() && !!supabase
 }
 
+// 把云端一行题目规范成与本地 mapQuestionRow 一致的扁平对象
+function mapCloudQuestion(q) {
+  return {
+    id: q.id, category_id: q.category_id, question_type: q.question_type, stem: q.stem,
+    option_a: q.option_a || '', option_b: q.option_b || '', option_c: q.option_c || '', option_d: q.option_d || '',
+    answer: q.answer, explanation: q.explanation || '', difficulty: q.difficulty || '适中', tags: q.tags || '',
+    created_at: q.created_at
+  }
+}
+
+// 批量把云端题目写入本地缓存（按 id 去重，避免重复）。调用方负责事务外层与 saveDatabase。
+function insertCloudQuestions(db, rows) {
+  db.run('BEGIN')
+  try {
+    for (const q of rows) {
+      db.run(
+        `INSERT OR IGNORE INTO questions
+          (id, category_id, question_type, stem, option_a, option_b, option_c, option_d, answer, explanation, difficulty, tags, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [q.id, q.category_id, q.question_type || '单选题', q.stem, q.option_a || '', q.option_b || '',
+         q.option_c || '', q.option_d || '', q.answer, q.explanation || '', q.difficulty || '适中', q.tags || '', q.created_at]
+      )
+    }
+    db.run('COMMIT')
+  } catch (e) {
+    try { db.run('ROLLBACK') } catch {}
+    throw e
+  }
+}
+
 // 把云端分类 + 题量同步到本地缓存（INSERT OR REPLACE 保留 id）
 export async function hydrateCategories() {
   if (!isCloudSource()) return
@@ -85,17 +115,7 @@ export async function ensureCategoryQuestions(categoryId) {
         if (error) throw error
         if (!data || !data.length) break
 
-        d.run('BEGIN')
-        for (const q of data) {
-          d.run(
-            `INSERT OR IGNORE INTO questions
-              (id, category_id, question_type, stem, option_a, option_b, option_c, option_d, answer, explanation, difficulty, tags, created_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [q.id, q.category_id, q.question_type || '单选题', q.stem, q.option_a || '', q.option_b || '',
-             q.option_c || '', q.option_d || '', q.answer, q.explanation || '', q.difficulty || '适中', q.tags || '', q.created_at]
-          )
-        }
-        d.run('COMMIT')
+        insertCloudQuestions(d, data)
         await saveDatabase()
 
         if (data.length < PAGE) break
@@ -103,7 +123,6 @@ export async function ensureCategoryQuestions(categoryId) {
       }
       hydratedCats.add(key)
     } catch (e) {
-      try { d.run('ROLLBACK') } catch {}
       if (import.meta.env.DEV) console.warn('ensureCategoryQuestions 失败（已回退本地）：', e?.message)
     }
   })()
@@ -134,26 +153,16 @@ export async function searchQuestions(keyword, categoryId = null) {
       if (!error && data?.length) {
         const d = getDatabase()
         if (d) {
-          d.run('BEGIN')
-          for (const q of data) {
-            d.run(
-              `INSERT OR IGNORE INTO questions (id,category_id,question_type,stem,option_a,option_b,option_c,option_d,answer,explanation,difficulty,tags,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-              [q.id, q.category_id, q.question_type || '单选题', q.stem, q.option_a || '', q.option_b || '',
-               q.option_c || '', q.option_d || '', q.answer, q.explanation || '', q.difficulty || '适中', q.tags || '', q.created_at]
-            )
-          }
-          d.run('COMMIT')
+          insertCloudQuestions(d, data)
           await saveDatabase()
         }
-        const cats = getAllCategories()
         const catName = {}
-        for (const c of cats) catName[c.id] = c.name
-        return data.map(q => ({
-          id: q.id, category_id: q.category_id, question_type: q.question_type, stem: q.stem,
-          option_a: q.option_a || '', option_b: q.option_b || '', option_c: q.option_c || '', option_d: q.option_d || '',
-          answer: q.answer, explanation: q.explanation || '', difficulty: q.difficulty || '适中', tags: q.tags || '',
-          created_at: q.created_at, category_name: catName[q.category_id] || ''
-        }))
+        for (const c of getAllCategories()) catName[c.id] = c.name
+        return data.map(q => {
+          const m = mapCloudQuestion(q)
+          m.category_name = catName[q.category_id] || ''
+          return m
+        })
       }
     } catch (e) {
       // 云端搜索失败 → 回退本地

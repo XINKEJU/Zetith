@@ -55,6 +55,8 @@ export default function AuthModal() {
       } else {
         await account.signIn(email.trim(), password)
       }
+      // 兜底：立即同步登录态缓存，确保后续写操作不再弹窗（不依赖异步 auth 事件）
+      try { const s = await account.getSession(); account.setCachedUser(s?.user || null) } catch {}
       addToast('登录成功', 'success')
       close()
     } catch (e) {

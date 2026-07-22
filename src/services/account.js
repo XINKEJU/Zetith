@@ -40,7 +40,11 @@ export async function signUp(email, password) {
   if (!supabase) throw new Error('同步后端未配置')
   const { data, error } = await supabase.auth.signUp({ email, password })
   if (error) throw error
-  if (data.session) localStorage.setItem(LS_EMAIL, email)
+  if (data.session) {
+    localStorage.setItem(LS_EMAIL, email)
+    // 立即刷新登录态缓存（不依赖异步 auth 事件），让强制登录闸门确定生效
+    setCachedUser(data.user)
+  }
   return data
 }
 
@@ -50,6 +54,8 @@ export async function signIn(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) throw error
   localStorage.setItem(LS_EMAIL, email)
+  // 立即刷新登录态缓存（不依赖异步 auth 事件）
+  if (data.session?.user) setCachedUser(data.session.user)
   return data
 }
 
@@ -57,6 +63,7 @@ export async function signOut() {
   if (!supabase) return
   await supabase.auth.signOut()
   localStorage.removeItem(LS_EMAIL)
+  setCachedUser(null)
 }
 
 // 取当前会话（含 user）；未登录返回 null

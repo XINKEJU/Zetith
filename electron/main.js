@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, Menu, screen } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Menu, screen, nativeTheme, dialog } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import http from 'http'
@@ -250,7 +250,9 @@ function buildMenu() {
         { role: 'zoomIn', label: '放大' },
         { role: 'zoomOut', label: '缩小' },
         { type: 'separator' },
-        { role: 'togglefullscreen', label: '进入/退出全屏' }
+        { role: 'togglefullscreen', label: '进入/退出全屏' },
+        { type: 'separator' },
+        { label: '跟随系统外观', click: () => sendMenu({ type: 'theme', source: 'system' }) }
       ]
     },
     // 窗口
@@ -272,6 +274,27 @@ function buildMenu() {
       role: 'help',
       label: '帮助',
       submenu: [
+        {
+          label: '检查更新',
+          click: async () => {
+            if (!app.isPackaged) {
+              dialog.showMessageBox(mainWindow, { message: '开发模式下不检查更新' })
+              return
+            }
+            try {
+              const { autoUpdater } = await import('electron-updater')
+              autoUpdater.autoDownload = true
+              const res = await autoUpdater.checkForUpdatesAndNotify()
+              if (!res || !res.updateInfo) {
+                dialog.showMessageBox(mainWindow, { message: '当前已是最新版本' })
+              }
+            } catch (e) {
+              dialog.showMessageBox(mainWindow, {
+                message: '暂未启用自动更新通道（需安装 electron-updater 并发布 Release）。\n' + (e?.message || e)
+              })
+            }
+          }
+        },
         {
           label: '访问项目主页',
           click: async () => {
@@ -311,6 +334,28 @@ app.whenReady().then(async () => {
     const u8 = data instanceof Uint8Array ? data : new Uint8Array(data)
     await fs.promises.writeFile(fp, u8)
     return true
+  })
+
+  // 主题：跟随 macOS 系统外观。themeSource 默认 'system'，渲染端可手动 override
+  ipcMain.handle('theme:set', (event, source) => {
+    if (source === 'light' || source === 'dark' || source === 'system') {
+      nativeTheme.themeSource = source
+    }
+  })
+  ipcMain.handle('theme:initial', () => nativeTheme.shouldUseDarkColors)
+
+  // 答题进度上报：macOS 在 Dock 栏显示进度（ratio 0~1 显示，-1 移除）
+  ipcMain.handle('app:progress', (event, ratio) => {
+    if (process.platform === 'darwin' && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setProgressBar(ratio)
+    }
+  })
+
+  // 系统外观变化广播给渲染端（渲染端在「跟随系统」模式下自动切换深浅色）
+  nativeTheme.on('updated', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('theme:system', nativeTheme.shouldUseDarkColors)
+    }
   })
 
   buildMenu()

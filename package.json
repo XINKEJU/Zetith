@@ -68,6 +68,13 @@
           "path": "/Applications"
         }
       ]
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "XINKEJU",
+        "repo": "Zetith"
+      }
+    ]
   }
 }

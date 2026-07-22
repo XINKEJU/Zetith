@@ -183,8 +183,39 @@ export default function CategoriesPage() {
     }
   }, [])
 
+  // 下拉刷新（移动端）
+  const [pullDistance, setPullDistance] = useState(0)
+  const pullStartY = useRef(null)
+  const pullAtTop = useRef(false)
+  const onPullStart = (e) => {
+    pullStartY.current = e.touches[0].clientY
+    pullAtTop.current = (window.scrollY || document.documentElement.scrollTop || 0) <= 0
+  }
+  const onPullMove = (e) => {
+    if (pullStartY.current == null || !pullAtTop.current) return
+    const dy = e.touches[0].clientY - pullStartY.current
+    if (dy > 0) setPullDistance(Math.min(120, dy * 0.5))
+  }
+  const onPullEnd = () => {
+    if (pullDistance > 70) {
+      persistAndRefresh().then(() => addToast('已刷新', 'success', 1200)).catch(() => {})
+    }
+    setPullDistance(0)
+    pullStartY.current = null
+    pullAtTop.current = false
+  }
+
   return (
-    <div>
+    <div onTouchStart={onPullStart} onTouchMove={onPullMove} onTouchEnd={onPullEnd}>
+      {pullDistance > 0 && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, height: pullDistance,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--text-muted)', fontSize: 13, zIndex: 60, pointerEvents: 'none'
+        }}>
+          {pullDistance > 70 ? '释放刷新' : '下拉刷新'}
+        </div>
+      )}
       <div className="page-header categories-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1>题库管理</h1>

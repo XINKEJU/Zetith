@@ -40,6 +40,10 @@ export default function App() {
       if (!payload) return
       if (payload.type === 'navigate') {
         navigate(payload.path || '/')
+      } else if (payload.type === 'theme') {
+        window.electronAPI?.setThemeSource(payload.source)
+        localStorage.setItem('themeSource', payload.source)
+        window.dispatchEvent(new CustomEvent('app:theme-system', { detail: payload.source }))
       } else if (payload.type === 'action') {
         // 记下待处理动作，待题库管理页挂载后消费；同时派发事件供已在该页时即时响应
         window.__pendingMenuAction = payload.name

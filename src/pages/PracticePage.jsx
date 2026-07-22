@@ -29,6 +29,41 @@ export default function PracticePage() {
   const [qTimeLeft, setQTimeLeft] = useState(0)
   const timerRef = useRef(null)
   const startedAt = useRef(null)
+  const [focusMode, setFocusMode] = useState(false)
+
+  // 答题专注模式：隐藏侧栏 / 底栏，沉浸答题
+  useEffect(() => {
+    document.body.classList.toggle('focus-mode', focusMode)
+    return () => document.body.classList.remove('focus-mode')
+  }, [focusMode])
+
+  // Dock 进度条（macOS）：练习中显示当前进度，退出时移除
+  useEffect(() => {
+    const r = window.electronAPI?.reportProgress
+    if (!r) return
+    if (phase === 'practice' && questions.length > 0) {
+      r((index + (done ? 1 : 0)) / questions.length)
+    } else {
+      r(-1)
+    }
+  }, [phase, index, done, questions.length])
+
+  useEffect(() => () => { window.electronAPI?.reportProgress?.(-1) }, [])
+
+  // 失焦暂停单题倒计时：切走 App / 切到其他标签页时停止计时，回到前台恢复
+  useEffect(() => {
+    const pause = () => { if (phase === 'practice' && perQuestionTimer && !done) clearInterval(timerRef.current) }
+    const resume = () => { if (phase === 'practice' && perQuestionTimer && !done) startTimer() }
+    const onVis = () => { document.hidden ? pause() : resume() }
+    window.addEventListener('blur', pause)
+    window.addEventListener('focus', resume)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('blur', pause)
+      window.removeEventListener('focus', resume)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [phase, perQuestionTimer, done])
 
   const begin = () => {
     if (!selectedCategoryId) return
@@ -79,6 +114,7 @@ export default function PracticePage() {
       return next
     })
     r.isCorrect ? playCorrect() : playIncorrect()
+    if (navigator.vibrate) navigator.vibrate(r.isCorrect ? 25 : 80)
   }, [option, questions, index, displays])
 
   useEffect(() => {
@@ -103,6 +139,20 @@ export default function PracticePage() {
       setDone(false)
       setResult(null)
       if (perQuestionTimer) { setQTimeLeft(timePerQ); startTimer(timePerQ) }
+    }
+  }
+
+  // 移动端左右滑切题
+  const touchStartX = useRef(0)
+  const handleTouchStart = (e) => { touchStartX.current = e.touches[0].clientX }
+  const handleTouchEnd = (e) => {
+    const diff = touchStartX.current - e.changedTouches[0].clientX
+    if (Math.abs(diff) > 60) {
+      if (diff > 0) {
+        if (index < questions.length - 1) { setIndex(i => i + 1); setOption(null); setDone(false); setResult(null) }
+      } else {
+        if (index > 0) { setIndex(i => i - 1); setOption(null); setDone(false); setResult(null) }
+      }
     }
   }
 
@@ -246,7 +296,12 @@ export default function PracticePage() {
 
   return (
     <div>
-      <div className="page-header"><h1>答题练习</h1></div>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1>答题练习</h1>
+        <button className="btn btn-outline" onClick={() => setFocusMode(f => !f)}>
+          {focusMode ? '退出专注' : '专注模式'}
+        </button>
+      </div>
 
       <div className="progress-bar">
         <div className="progress-fill" style={{ width: `${pct}%` }} />
@@ -261,7 +316,7 @@ export default function PracticePage() {
         <span>正确 {correct} 题</span>
       </div>
 
-      <div className="question-card" style={{ marginBottom: '0' }}>
+      <div className="question-card" style={{ marginBottom: '0' }} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div className="question-meta">
           <span className="question-badge badge-type">{d.question_type}</span>
           {d.difficulty && <span className="question-badge badge-difficulty">{d.difficulty}</span>}

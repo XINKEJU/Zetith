@@ -4,6 +4,8 @@ import { useApp } from '../context/AppContext'
 import SearchModal from './SearchModal'
 import ShortcutPanel from './ShortcutPanel'
 import ReminderSetup from './ReminderSetup'
+import { useToast } from './ToastProvider'
+import { importFromFiles } from '../services/importService'
 
 const navItems = [
   { path: '/', label: '首页', key: '1', icon: <path d="M3 8L10 2L17 8V19H13V13H7V19H3V8Z" /> },
@@ -23,12 +25,19 @@ export default function Layout({ children }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { dbReady, initProgress, initPhase, initMessage, wrongCount } = useApp()
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark')
+  // 主题：themeSource 可为 'system' | 'light' | 'dark'；system 时跟随 macOS 系统外观
+  const [themeSource, setThemeSource] = useState(() => localStorage.getItem('themeSource') || 'system')
+  const [systemDark, setSystemDark] = useState(() => localStorage.getItem('theme') === 'dark')
+  const themeSourceRef = useRef(themeSource)
+  const darkMode = themeSource === 'system' ? systemDark : themeSource === 'dark'
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true')
   const [showSearch, setShowSearch] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showReminder, setShowReminder] = useState(false)
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
+  const { addToast } = useToast()
+  const [showDrop, setShowDrop] = useState(false)
+  const dragCounter = useRef(0)
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -50,6 +59,119 @@ export default function Layout({ children }) {
       document.body.classList.add('mac-electron')
     }
   }, [])
+
+  // 同步最新 themeSource 给原生主题监听回调
+  useEffect(() => { themeSourceRef.current = themeSource }, [themeSource])
+
+  // 虚拟键盘避让：软键盘弹出时记录偏移量，供固定底栏上移
+  useEffect(() => {
+    if (!window.visualViewport) return
+    const vp = window.visualViewport
+    const onResize = () => {
+      const kb = Math.max(0, window.innerHeight - vp.height - vp.offsetTop)
+      document.documentElement.style.setProperty('--kb-offset', kb + 'px')
+    }
+    vp.addEventListener('resize', onResize)
+    vp.addEventListener('scroll', onResize)
+    onResize()
+    return () => {
+      vp.removeEventListener('resize', onResize)
+      vp.removeEventListener('scroll', onResize)
+    }
+  }, [])
+
+  // 跟随系统外观：注册系统变化回调，并在跟随模式下拉取初始值
+  useEffect(() => {
+    if (!window.electronAPI) return
+    const off = window.electronAPI.onSystemTheme((isDark) => {
+      if (themeSourceRef.current === 'system') setSystemDark(isDark)
+    })
+    if (themeSourceRef.current === 'system') {
+      window.electronAPI.getInitialTheme().then((d) => setSystemDark(!!d)).catch(() => {})
+    }
+    return off
+  }, [])
+
+  // 菜单「跟随系统外观」跨页事件
+  useEffect(() => {
+    const onFollow = (e) => {
+      const src = e.detail || 'system'
+      setThemeSource(src)
+      localStorage.setItem('themeSource', src)
+      if (src === 'system' && window.electronAPI) {
+        window.electronAPI.getInitialTheme().then((d) => setSystemDark(!!d)).catch(() => {})
+      }
+    }
+    window.addEventListener('app:theme-system', onFollow)
+    return () => window.removeEventListener('app:theme-system', onFollow)
+  }, [])
+
+  // 切换浅/深色（手动 override 系统）
+  const toggleTheme = () => {
+    const current = themeSource === 'system' ? (systemDark ? 'dark' : 'light') : themeSource
+    const next = current === 'dark' ? 'light' : 'dark'
+    setThemeSource(next)
+    localStorage.setItem('themeSource', next)
+    window.electronAPI?.setThemeSource(next)
+  }
+
+  // 全局拖拽导入：把 Excel/CSV 文件拖入窗口即可导入题库
+  useEffect(() => {
+    const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files')
+    const onDragEnter = (e) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      dragCounter.current += 1
+      setShowDrop(true)
+    }
+    const onDragOver = (e) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+    }
+    const onDragLeave = (e) => {
+      if (!hasFiles(e)) return
+      dragCounter.current -= 1
+      if (dragCounter.current <= 0) {
+        dragCounter.current = 0
+        setShowDrop(false)
+      }
+    }
+    const onDrop = async (e) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      dragCounter.current = 0
+      setShowDrop(false)
+      const files = Array.from(e.dataTransfer.files || []).filter((f) => /\.(xlsx|xls|csv)$/i.test(f.name))
+      if (!files.length) {
+        addToast('请拖入 Excel (.xlsx/.xls) 或 CSV 文件', 'warning')
+        return
+      }
+      try {
+        const res = await importFromFiles(files)
+        if (res.totalImported > 0) {
+          addToast(`成功导入 ${res.totalImported} 道题${res.totalErrors ? `，${res.totalErrors} 个文件失败` : ''}`, 'success')
+          navigate('/categories')
+        } else if (res.totalErrors) {
+          addToast(`导入失败：${res.results[0]?.error || '未知错误'}`, 'error')
+        } else {
+          addToast('未识别到有效题目', 'warning')
+        }
+      } catch (err) {
+        addToast('导入出错：' + (err?.message || err), 'error')
+      }
+    }
+    window.addEventListener('dragenter', onDragEnter)
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('dragleave', onDragLeave)
+    window.addEventListener('drop', onDrop)
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter)
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('dragleave', onDragLeave)
+      window.removeEventListener('drop', onDrop)
+    }
+  }, [navigate, addToast])
 
   // Prevent body scroll when mobile drawer is open
   useEffect(() => {
@@ -88,7 +210,7 @@ export default function Layout({ children }) {
           const item = navItems.find(item => item.key === String(num))
           if (item) navigate(item.path)
         }
-        if (e.key === 't' || e.key === 'T') { e.preventDefault(); setDarkMode(d => !d) }
+        if (e.key === 't' || e.key === 'T') { e.preventDefault(); toggleTheme() }
         if (e.key === 'k' || e.key === 'K') { e.preventDefault(); setShowSearch(true) }
         if (e.key === 'h' || e.key === 'H') { e.preventDefault(); navigate('/history') }
         if (e.key === 'r' || e.key === 'R') { e.preventDefault(); setShowReminder(true) }
@@ -186,7 +308,7 @@ export default function Layout({ children }) {
             <span className="sidebar-text">学习提醒</span>
             <span className="nav-shortcut sidebar-text">⌘R</span>
           </button>
-          <button className="nav-item" onClick={() => setDarkMode(d => !d)} style={{ width: '100%' }} title={collapsed ? (darkMode ? '浅色模式' : '深色模式') : undefined}>
+          <button className="nav-item" onClick={() => toggleTheme()} style={{ width: '100%' }} title={collapsed ? (darkMode ? '浅色模式' : '深色模式') : undefined}>
             <span className="nav-dot" style={{ background: darkMode ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.3)' }} />
             {collapsed && (
               <svg className="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"
@@ -267,6 +389,17 @@ export default function Layout({ children }) {
 
       {/* 移动端底部导航栏 */}
       {dbReady && <MobileNav location={location.pathname} navigate={navigate} wrongCount={wrongCount} onSearch={() => setShowSearch(true)} />}
+
+      {/* 全局拖拽导入遮罩 */}
+      {showDrop && (
+        <div className="global-drop-overlay">
+          <div className="global-drop-box">
+            <div className="global-drop-icon">📥</div>
+            <div className="global-drop-text">松开以导入题库</div>
+            <div className="global-drop-sub">支持 .xlsx / .xls / .csv</div>
+          </div>
+        </div>
+      )}
 
       {showSearch && <SearchModal onClose={() => setShowSearch(false)} />}
       {showShortcuts && <ShortcutPanel onClose={() => setShowShortcuts(false)} />}

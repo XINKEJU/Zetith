@@ -27,6 +27,46 @@ export default function ExamPage() {
   const [answerResult, setAnswerResult] = useState(null)
   const timerRef = useRef(null)
   const startTimeRef = useRef(null)
+  const [focusMode, setFocusMode] = useState(false)
+
+  // 答题专注模式：隐藏侧栏 / 底栏，沉浸答题
+  useEffect(() => {
+    document.body.classList.toggle('focus-mode', focusMode)
+    return () => document.body.classList.remove('focus-mode')
+  }, [focusMode])
+
+  // Dock 进度条（macOS）：考试中显示当前进度，退出时移除
+  useEffect(() => {
+    const r = window.electronAPI?.reportProgress
+    if (!r) return
+    if (setupDone && !finished && questions.length > 0) {
+      r((currentIndex + 1) / questions.length)
+    } else {
+      r(-1)
+    }
+  }, [setupDone, finished, currentIndex, questions.length])
+
+  useEffect(() => () => { window.electronAPI?.reportProgress?.(-1) }, [])
+
+  // 失焦暂停考试倒计时：切走 App / 切到后台时停止计时，回到前台恢复
+  useEffect(() => {
+    const pause = () => { clearTimeout(timerRef.current) }
+    const resume = () => {
+      if (setupDone && !finished && timeLeft > 0) {
+        clearTimeout(timerRef.current)
+        timerRef.current = setTimeout(() => setTimeLeft(t => t - 1), 1000)
+      }
+    }
+    const onVis = () => { document.hidden ? pause() : resume() }
+    window.addEventListener('blur', pause)
+    window.addEventListener('focus', resume)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('blur', pause)
+      window.removeEventListener('focus', resume)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [setupDone, finished, timeLeft])
 
   // Start exam
   const startExam = () => {
@@ -94,6 +134,7 @@ export default function ExamPage() {
     setSubmitted(true)
     saveStudyRecord(currentQ.id, currentQ.category_id, result.isCorrect, result.userAnswer, Math.round((Date.now() - startTimeRef.current) / 1000))
     setResults(prev => [...prev, { ...result, questionId: currentQ.id }])
+    if (navigator.vibrate) navigator.vibrate(result.isCorrect ? 25 : 80)
   }
 
   const handleNext = () => {
@@ -119,6 +160,17 @@ export default function ExamPage() {
         setSubmitted(false)
         setAnswerResult(null)
       }
+    }
+  }
+
+  // 移动端左右滑切题
+  const touchStartX = useRef(0)
+  const handleTouchStart = (e) => { touchStartX.current = e.touches[0].clientX }
+  const handleTouchEnd = (e) => {
+    const diff = touchStartX.current - e.changedTouches[0].clientX
+    if (Math.abs(diff) > 60) {
+      if (diff > 0) handleNext()
+      else handlePrev()
     }
   }
 
@@ -303,8 +355,13 @@ export default function ExamPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h1 style={{ fontSize: '20px' }}>模拟考试</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <h1 style={{ fontSize: '20px' }}>模拟考试</h1>
+          <button className="btn btn-outline" style={{ padding: '6px 12px', fontSize: '13px' }} onClick={() => setFocusMode(f => !f)}>
+            {focusMode ? '退出专注' : '专注模式'}
+          </button>
+        </div>
         <div style={{
           padding: '8px 16px', borderRadius: '8px', fontSize: '18px', fontWeight: 700,
           background: timeLeft < 300 ? 'var(--danger-light)' : 'var(--primary-light)',
@@ -323,7 +380,7 @@ export default function ExamPage() {
         <span>已答 {results.length} 题，正确 {correctCount}</span>
       </div>
 
-      <div className="question-card" style={{ marginBottom: '0' }}>
+      <div className="question-card" style={{ marginBottom: '0' }} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div className="question-meta">
           <span className="question-badge badge-type">{currentD.question_type}</span>
           <span className="question-badge badge-difficulty">{currentD.difficulty}</span>

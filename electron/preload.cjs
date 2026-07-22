@@ -17,5 +17,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (event, payload) => callback(payload)
     ipcRenderer.on('app:menu', handler)
     return () => ipcRenderer.removeListener('app:menu', handler)
-  }
+  },
+  // 主题：设置主题来源（light / dark / system）并读取系统当前外观
+  setThemeSource: (source) => ipcRenderer.invoke('theme:set', source),
+  getInitialTheme: () => ipcRenderer.invoke('theme:initial'),
+  onSystemTheme: (callback) => {
+    const handler = (event, isDark) => callback(isDark)
+    ipcRenderer.on('theme:system', handler)
+    return () => ipcRenderer.removeListener('theme:system', handler)
+  },
+  // 答题进度上报（macOS Dock 进度条）：ratio 0~1 显示，-1 移除
+  reportProgress: (ratio) => ipcRenderer.invoke('app:progress', ratio)
 })

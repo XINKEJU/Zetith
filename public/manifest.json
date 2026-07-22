@@ -4,8 +4,8 @@
   "description": "智能题库学习系统 — 科学刷题，高效备考",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f9f8f6",
-  "theme_color": "#f2866e",
+  "background_color": "#0E0D17",
+  "theme_color": "#58CC02",
   "icons": [
     {
       "src": "/icon-192.png",

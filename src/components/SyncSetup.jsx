@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useToast } from './ToastProvider'
 import * as githubSync from '../services/githubSync'
 import * as webdavSync from '../services/webdavSync'
+import * as cloudantSync from '../services/cloudantSync'
 import { syncNow } from '../services/syncService'
 
 const LS_AUTO = 'zetith_auto_sync'
@@ -24,6 +25,13 @@ export default function SyncSetup({ onClose }) {
   const [jyConfigured, setJyConfigured] = useState(false)
   const [jyName, setJyName] = useState('')
 
+  // Cloudant（实时同步）
+  const [caUrl, setCaUrl] = useState('')
+  const [caKey, setCaKey] = useState('')
+  const [caPwd, setCaPwd] = useState('')
+  const [caConfigured, setCaConfigured] = useState(false)
+  const [caStatus, setCaStatus] = useState({ s: 'idle', detail: '' })
+
   // 通用
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
@@ -43,6 +51,11 @@ export default function SyncSetup({ onClose }) {
     setJyPass(c.appPassword)
     setJyConfigured(webdavSync.isConfigured())
     setJyName(c.username)
+    const ca = cloudantSync.getConfig()
+    setCaUrl(ca.url)
+    setCaKey(ca.key)
+    setCaPwd(ca.password)
+    setCaConfigured(cloudantSync.isConfigured())
   }, [])
 
   const switchBackend = (b) => { setBackend(b); localStorage.setItem(LS_BACKEND, b); setMsg('') }
@@ -74,15 +87,44 @@ export default function SyncSetup({ onClose }) {
     addToast('已退出配置', 'info')
   }
 
+  const handleCaSave = () => {
+    cloudantSync.setConfig({ url: caUrl, key: caKey, password: caPwd })
+    const ok = cloudantSync.isConfigured()
+    setCaConfigured(ok)
+    if (ok) { cloudantSync.start(); addToast('已启动实时同步', 'success') }
+    else addToast('请填写完整的 Cloudant 信息', 'warning')
+  }
+  const handleCaLogout = () => {
+    cloudantSync.stop()
+    cloudantSync.clearConfig()
+    setCaConfigured(false); setCaUrl(''); setCaKey(''); setCaPwd(''); setCaStatus({ s: 'idle', detail: '' }); setMsg('')
+    addToast('已停止实时同步', 'info')
+  }
+
+  // Cloudant 同步状态监听
+  useEffect(() => {
+    if (backend !== 'cloudant') return
+    const off = cloudantSync.onStatus((s, detail) => setCaStatus({ s, detail }))
+    return off
+  }, [backend])
+
   const handleSync = useCallback(async () => {
     let pushFn, pullFn, label
     if (backend === 'github') {
       if (!githubSync.isLoggedIn()) { addToast('请先保存 GitHub Token', 'warning'); return }
       pushFn = githubSync.pushData; pullFn = githubSync.pullData; label = 'GitHub'
-    } else {
+    } else if (backend === 'webdav') {
       if (!webdavSync.isSupported()) { addToast('坚果云仅桌面端可用', 'warning'); return }
       if (!webdavSync.isConfigured()) { addToast('请先配置坚果云', 'warning'); return }
       pushFn = webdavSync.pushData; pullFn = webdavSync.pullData; label = '坚果云'
+    } else {
+      if (!cloudantSync.isConfigured()) { addToast('请先配置 Cloudant', 'warning'); return }
+      await cloudantSync.syncNow()
+      const now = new Date().toISOString()
+      localStorage.setItem(LS_LAST, now); setLastSync(now)
+      setMsg('已通过 Cloudant 同步 ✓')
+      addToast('同步完成', 'success')
+      return
     }
     setBusy(true); setMsg('正在同步…')
     try {
@@ -120,7 +162,7 @@ export default function SyncSetup({ onClose }) {
 
         {/* 后端切换 */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-          {[{ k: 'github', t: 'GitHub 私有仓库' }, { k: 'webdav', t: '坚果云 WebDAV' }].map(o => (
+          {[{ k: 'github', t: 'GitHub 私有仓库' }, { k: 'webdav', t: '坚果云 WebDAV' }, { k: 'cloudant', t: 'Cloudant 实时' }].map(o => (
             <button key={o.k} className={`btn ${backend === o.k ? 'btn-primary' : 'btn-outline'}`}
               style={{ flex: 1 }} onClick={() => switchBackend(o.k)}>
               {o.t}
@@ -154,7 +196,7 @@ export default function SyncSetup({ onClose }) {
               </div>
             </div>
           )
-        ) : (
+        ) : backend === 'webdav' ? (
           !jyConfigured ? (
             <div className="form-group">
               <label>坚果云服务器地址</label>
@@ -201,6 +243,56 @@ export default function SyncSetup({ onClose }) {
               </div>
             </div>
           )
+        ) : backend === 'cloudant' ? (
+          !caConfigured ? (
+            <div className="form-group">
+              <label>Cloudant 数据库 URL</label>
+              <input
+                value={caUrl}
+                onChange={e => setCaUrl(e.target.value)}
+                placeholder="https://xxxx.cloudantnosqldb.appdomain.cloud/zetith"
+                className="allow-select"
+                style={{ width: '100%' }}
+              />
+              <label style={{ marginTop: '10px' }}>API Key（用户名）</label>
+              <input
+                value={caKey}
+                onChange={e => setCaKey(e.target.value)}
+                placeholder="Cloudant API Key"
+                className="allow-select"
+                style={{ width: '100%' }}
+              />
+              <label style={{ marginTop: '10px' }}>API Key 密码</label>
+              <input
+                type="password"
+                value={caPwd}
+                onChange={e => setCaPwd(e.target.value)}
+                placeholder="API Key 对应的密码"
+                className="allow-select"
+                style={{ width: '100%' }}
+              />
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                在 IBM Cloudant 创建数据库并生成 API Key，且在控制台「CORS」中允许本应用来源（开发用可填 <b>*</b>）。实时双向同步、零花费（免费额度）。
+              </p>
+              <button className="btn btn-primary" onClick={handleCaSave} style={{ marginTop: '8px' }}>保存并启动实时同步</button>
+            </div>
+          ) : (
+            <div className="form-group">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: caStatus.s === 'error' ? 'var(--amber)' : 'var(--duo-green)', display: 'inline-block' }} />
+                <span style={{ fontWeight: 600 }}>
+                  {caStatus.s === 'connecting' ? '连接中…' : caStatus.s === 'error' ? '同步异常' : '实时同步中'}
+                </span>
+                <button className="btn btn-outline" style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: '12px' }} onClick={handleCaLogout}>停止</button>
+              </div>
+              {caStatus.s === 'error' && caStatus.detail && (
+                <p style={{ fontSize: '12px', color: 'var(--amber)', marginBottom: '8px' }}>错误：{caStatus.detail}</p>
+              )}
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>本地改动会秒级推送到云端，并自动拉取其他设备的更新。</p>
+            </div>
+          )
+        ) : (
+          null
         )}
 
         {/* 公共同步区 */}

@@ -126,6 +126,7 @@ tiku-app/
 - `src/services/githubSync.js`：Gist 后端（push/pull/fetchUser），Token 与 gistId 存 localStorage（渲染进程直连，依赖 CORS 头）。
 - `src/services/webdavSync.js`：WebDAV 后端（push/pull/fetchUser/ensureDir），通过 `window.electronAPI.webdavRequest` 走主进程代理，绕过 CORS；`isSupported()` 仅在桌面端为真。
 - `electron/main.js` 新增 `ipcMain.handle('webdav:request')`，在 Node 主进程用 `fetch` 转发 WebDAV 请求（不受 CORS 限制）；`electron/preload.cjs` 暴露 `electronAPI.webdavRequest` 转发 IPC。
+- **Cloudant 实时同步（PouchDB）**：`src/services/cloudantSync.js` 引入 `pouchdb-browser` 作为本地镜像库（IndexedDB），与 Cloudant 远端 `localDB.sync(remoteDB, {live:true, retry:true})` 双向实时同步；`database.js` 的 `saveDatabase()` 末尾 dispatch `zetith:db-saved` 事件 → 防抖（1.5s）`pushLocalToPouch()`（LWW 覆盖）；远端变更经 `remoteDB.changes` 流入 → `applyRemoteToSql()` 以 `updated_at` 合并回 sql.js 并 dispatch `zetith:remote-synced` 刷新 UI。`start()` 在配置保存或 App 启动（`Layout` 检测 backend=cloudant 且已配置）时调用；`onStatus()` 向 UI 广播连接状态。合并语义与原有 LWW 一致。
 - `src/services/syncService.js`：`syncNow(pushFn, pullFn)` 将后端抽象为函数——先 pull 远端并合并进本地，再 push 合并结果；`exportUserData()` 仅导出 `review_state` / `notes` / `bookmarks`（按 question_id 为键，体积小）；`importUserData()` 以最后写入优先（LWW）合并远端，不删除本地独有记录。
 - 不同步题库本身（体积大）；前提是各设备导入相同题库使 question_id 对齐。
 

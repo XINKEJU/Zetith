@@ -232,6 +232,8 @@ export async function saveDatabase() {
   if (!db) return;
   const data = db.export();
   await writeStoredDB(data);
+  // 通知同步层（Cloudant 等）：本地数据已落盘，可触发上传
+  try { window.dispatchEvent(new Event('zetith:db-saved')); } catch {}
 }
 
 export function getDatabase() {

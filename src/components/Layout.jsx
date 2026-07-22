@@ -5,6 +5,7 @@ import SearchModal from './SearchModal'
 import ShortcutPanel from './ShortcutPanel'
 import ReminderSetup from './ReminderSetup'
 import SyncSetup from './SyncSetup'
+import * as cloudantSync from '../services/cloudantSync'
 import { useToast } from './ToastProvider'
 import { importFromFiles } from '../services/importService'
 
@@ -64,6 +65,14 @@ export default function Layout({ children }) {
 
   // 同步最新 themeSource 给原生主题监听回调
   useEffect(() => { themeSourceRef.current = themeSource }, [themeSource])
+
+  // 已配置 Cloudant 且在后端选择为 cloudant 时，启动实时同步（App 启动即生效，无需点击）
+  useEffect(() => {
+    if (dbReady && localStorage.getItem('zetith_sync_backend') === 'cloudant' && cloudantSync.isConfigured()) {
+      cloudantSync.start()
+    }
+    return () => {}
+  }, [dbReady])
 
   // 虚拟键盘避让：软键盘弹出时记录偏移量，供固定底栏上移
   useEffect(() => {
